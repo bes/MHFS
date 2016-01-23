@@ -1,0 +1,24 @@
+repositories {
+    // JCenter repository, it's a superset of maven central
+    jcenter()
+
+    maven {
+        name "4thline-repo"
+        url "http://4thline.org/m2"
+    }
+
+}
+
+apply plugin: 'java'
+
+// Dependencies common to all projects
+dependencies {
+    compile "org.fourthline.cling:cling-core:2.0.1"
+    compile "org.fourthline.cling:cling-support:2.0.1"
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'se.bes.mhfs.gui.MHFSGUI'
+    }
+}

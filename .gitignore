@@ -1,0 +1,10 @@
+# Gradle
+build/
+.gradle
+# IDEA
+.idea/**
+!.idea/codeStyleSettings.xml
+!.idea/copyright/
+!.idea/copyright/**
+*.iml
+hfs.settings
