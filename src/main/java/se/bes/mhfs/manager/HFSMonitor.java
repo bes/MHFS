@@ -36,17 +36,37 @@ import java.util.Observable;
 import java.util.Observer;
 
 public class HFSMonitor extends Observable implements Observer{
+
+    public static final String NO_UPNP_IP = "UPnP IP: None";
+    public static final String NO_UPNP_DEVICE = "UPnP Device: None";
+
     private final LinkedList<NetworkInstance> instanceList;
     private final DirList dirList;
     private final FSList fsList;
     private final PluginManager plugins;
     
     private double speed = 0;
-    private int port = 80;
+    private int port = 8080;
     private boolean alternateHTMLSet = false;
     private String alternateHTML = "";
     private boolean gotNetwork = false;
     private String uploadDir;
+
+    private String upnpHostNoSave;
+
+    public static class ImmutableSettings {
+        public final String upnpIp;
+        public final String upnpDevice;
+
+        private ImmutableSettings(String upnpIp, String upnpDevice) {
+            this.upnpIp = upnpIp;
+            this.upnpDevice = upnpDevice;
+        }
+    }
+
+    private ImmutableSettings inMemory = new ImmutableSettings(NO_UPNP_IP, NO_UPNP_DEVICE);
+
+    private ImmutableSettings inSettings = new ImmutableSettings(NO_UPNP_IP, NO_UPNP_DEVICE);
 
     public HFSMonitor() {
         instanceList = new LinkedList<NetworkInstance>();
@@ -61,7 +81,35 @@ public class HFSMonitor extends Observable implements Observer{
         File dir = new File(".");
         uploadDir = dir.getAbsolutePath();
     }
-    
+
+    public ImmutableSettings getInSettings() {
+        return inSettings;
+    }
+
+    public ImmutableSettings getInMemory() {
+        return inMemory;
+    }
+
+    public void inMemoryToSettings() {
+        inSettings = inMemory;
+    }
+
+    public void setUpnpIp(String upnpIp) {
+        inMemory = new ImmutableSettings(upnpIp, inMemory.upnpDevice);
+    }
+
+    public void setUpnpDevice(String upnpDevice) {
+        inMemory = new ImmutableSettings(inMemory.upnpIp, upnpDevice);
+    }
+
+    public String getUpnpHost() {
+        return upnpHostNoSave;
+    }
+
+    public void setUpnpHost(String upnpHost) {
+        this.upnpHostNoSave = upnpHost;
+    }
+
     public void setupPlugins(){
         plugins.setupPlugins();
     }

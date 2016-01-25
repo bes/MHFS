@@ -35,23 +35,26 @@ import java.io.PrintWriter;
 public class SettingsManager {
     private final File saveFile = new File("hfs.settings");
     private HFSMonitor monitor;
-    
-    public SettingsManager(HFSMonitor monitor){
+
+    public SettingsManager(HFSMonitor monitor) {
         this.monitor = monitor;
     }
-    
-    public void saveSettings(){
+
+    public void saveSettings() {
         PrintWriter buffer;
-        
+
         try {
+            System.out.println("Saving to " + saveFile.getAbsolutePath());
             buffer = new PrintWriter(new FileOutputStream(saveFile));
             buffer.println("Port::" + monitor.getPort());
             buffer.println("Speed::" + monitor.getSpeed());
             buffer.println("Directory::" + monitor.getFSList().getBaseDir());
             buffer.println("UploadDirectory::" + monitor.getUploadDir());
-            if(monitor.getDirList().isCustomList()){
-                File [] files = monitor.getDirList().getDirFiles();
-                for(File f : files){
+            buffer.println("UPnPInterface::" + monitor.getInMemory().upnpIp);
+            buffer.println("UPnPDevice::" + monitor.getInMemory().upnpDevice);
+            if (monitor.getDirList().isCustomList()) {
+                File[] files = monitor.getDirList().getDirFiles();
+                for (File f : files) {
                     buffer.println("CustomFile::" + f.getAbsolutePath());
                 }
             }
@@ -59,40 +62,47 @@ public class SettingsManager {
             buffer.close();
         } catch (FileNotFoundException e) {
             e.printStackTrace();
+        } finally {
+            monitor.inMemoryToSettings();
         }
     }
-    
-    public void loadSettings(){
+
+    public void loadSettings() {
         BufferedReader buffer;
-        
+
         try {
             buffer = new BufferedReader(new FileReader(saveFile));
-            
+
             String line = buffer.readLine();
-            while(line != null){
-                String [] split = line.split("::");
-                
-                if(split[0].equals("Port")){
+            while (line != null) {
+                String[] split = line.split("::");
+
+                if (split[0].equals("Port")) {
                     monitor.setPort(Integer.parseInt(split[1]));
-                }else if(split[0].equals("Speed")){
+                } else if (split[0].equals("Speed")) {
                     monitor.setSpeed(Double.parseDouble(split[1]));
-                }else if(split[0].equals("Directory")){
+                } else if (split[0].equals("Directory")) {
                     monitor.getFSList().setBaseDir(split[1]);
-                }else if(split[0].equals("UploadDirectory")){
+                } else if (split[0].equals("UploadDirectory")) {
                     monitor.setUploadDir(split[1]);
-                }else if(split[0].equals("CustomFile")){
+                } else if (split[0].equals("CustomFile")) {
                     monitor.getDirList().addCustom(new File(split[1]));
+                } else if (split[0].equals("UPnPInterface")) {
+                    monitor.setUpnpIp(split[1]);
+                } else if (split[0].equals("UPnPDevice")) {
+                    monitor.setUpnpDevice(split[1]);
                 }
-                
+
                 line = buffer.readLine();
             }
-            
+
             buffer.close();
         } catch (FileNotFoundException e) {
             System.err.println("hfs.settings does not exist, not a problem.");
-        } catch (IOException e){
+        } catch (IOException e) {
             e.printStackTrace();
+        } finally {
+            monitor.inMemoryToSettings();
         }
-        
     }
 }

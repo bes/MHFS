@@ -3,12 +3,16 @@ Minimal HTTP File Server
 
 First written in 2006, updated and published to GitHub in 2016.
 
+Requires a Java 8 runtime.
+
 #Capabilities
 
 * Rate limiting
 * Choose specific files to serve
 * Choose a directory to serve
 * Supports uploading
+* UPnP support using [Cling](https://github.com/4thline/cling/)
+ * Forwards a port from your router to your computer, if you choose
 
 #Goals
 
@@ -16,7 +20,12 @@ First written in 2006, updated and published to GitHub in 2016.
 * Simple to use
 * Clean up the 10 year old code
 
-#Usage
+#Build
+```bash
+./MHFS $ ./gradlew jar
 ```
-$ java -jar MHFS.jar
+
+#Usage
+```bash
+./MHFS $ java -jar build/libs/MHFS.jar
 ```
