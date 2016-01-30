@@ -22,10 +22,11 @@ Requires a Java 8 runtime.
 
 #Build
 ```bash
-./MHFS $ ./gradlew jar
+./gradlew jar
 ```
 
 #Usage
+Double click the built JAR file, or if you prefer to run it from the command line:
 ```bash
-./MHFS $ java -jar build/libs/MHFS.jar
+java -jar build/libs/MHFS.jar
 ```
