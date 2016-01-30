@@ -24,7 +24,7 @@
 
 package se.bes.mhfs.filesystem;
 
-import se.bes.mhfs.events.UpdateEvent;
+import se.bes.mhfs.manager.HFSMonitor;
 
 import java.io.File;
 import java.io.FileFilter;
@@ -34,19 +34,19 @@ import java.nio.charset.Charset;
 import java.util.Observable;
 
 public class FSList extends Observable {
-    private String baseDir;
+    private HFSMonitor monitor;
 
-    public FSList(String baseDir) {
-        this.baseDir = baseDir;
+    public FSList(HFSMonitor monitor) {
+        this.monitor = monitor;
     }
-    
+
     public boolean isDir(String place){
         try {
             place = URLDecoder.decode(place, Charset.defaultCharset().toString());
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
         }
-        File f = new File(baseDir + "/" + place);
+        File f = new File(monitor.getInMemory().baseDir + "/" + place);
         return f.isDirectory();
     }
 
@@ -56,6 +56,7 @@ public class FSList extends Observable {
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
         }
+        final String baseDir = monitor.getInMemory().baseDir;
         File dir = new File(baseDir + "/" + dirString);
         if (!dir.getAbsolutePath().contains(baseDir))
             return (new File[] { new File(baseDir) });
@@ -80,21 +81,16 @@ public class FSList extends Observable {
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
         }
+        final String baseDir = monitor.getInMemory().baseDir;
         File dir = new File(baseDir + "/" + dirString);
         if (!dir.getAbsolutePath().contains(baseDir))
             return (new File[] { new File(baseDir) });
 
-        File[] fd = dir.listFiles(new FileFilter() {
-
+        return dir.listFiles(new FileFilter() {
             public boolean accept(File pathname) {
-                if (pathname.isDirectory())
-                    return true;
-                return false;
+                return pathname.isDirectory();
             }
-
         });
-
-        return fd;
     }
     
     public boolean isBaseDirectory(String isBase){
@@ -103,22 +99,10 @@ public class FSList extends Observable {
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
         }
+        final String baseDir = monitor.getInMemory().baseDir;
         File isBaseF = new File(baseDir + "/" + isBase);
         File baseDirF = new File(baseDir);
         
         return isBaseF.getAbsolutePath().equals(baseDirF.getAbsolutePath());
-    }
-
-    public void setBaseDir(String baseDir) {
-        this.baseDir = baseDir;
-        setChanged();
-        UpdateEvent evt = new UpdateEvent();
-        evt.addEvent("settings", true);
-        evt.addEvent("sharedFiles", true);
-        notifyObservers(evt);
-    }
-    
-    public String getBaseDir(){
-        return baseDir;
     }
 }

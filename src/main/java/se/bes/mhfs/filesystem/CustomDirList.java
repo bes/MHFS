@@ -22,45 +22,44 @@
  * SOFTWARE.
  */
 
-package se.bes.mhfs.network;
+package se.bes.mhfs.filesystem;
 
-import se.bes.mhfs.logger.MHFSLogger;
 import se.bes.mhfs.manager.HFSMonitor;
 
-import java.io.IOException;
-import java.net.ServerSocket;
+import java.io.File;
+import java.util.*;
 
-public class Network extends Thread{
-    private ServerSocket ss;
-    private MHFSLogger label;
-    private HFSMonitor monitor;
-    
-    public Network(MHFSLogger label, HFSMonitor monitor){
-        this.label = label;
+public class CustomDirList extends Observable {
+    private final static ArraysComp comparator = new ArraysComp();
+    private final HFSMonitor monitor;
+
+    public CustomDirList(HFSMonitor monitor) {
         this.monitor = monitor;
     }
-    
-    public void stopNet(){
-        try {
-            if(ss != null)
-                ss.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+
+    public synchronized File[] getDirFiles() {
+        Map<String, File> customFiles = monitor.getInMemory().customFiles;
+        File[] filesA = new File[customFiles.size()];
+        customFiles.values().toArray(filesA);
+        return filesA;
     }
-    
-    public void run(){
-        try {
-            ss = new ServerSocket(monitor.getInMemory().port);
-            monitor.setNetwork(true);
-            while (true) {
-                monitor.addNetworkInstance(new NetworkInstance(ss.accept(), label));
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            monitor.getLogger().append(String.format("Network Exception: %s: %s", e.getClass().getName(), e.getMessage()));
-        } finally {
-            monitor.setNetwork(false);
+
+    public synchronized String[] getDirStrings() {
+        Map<String, File> customFiles = monitor.getInMemory().customFiles;
+        String[] strings = new String[customFiles.size()];
+        customFiles.keySet().toArray(strings);
+        Arrays.sort(strings, 0, strings.length, CustomDirList.comparator);
+        return strings;
+    }
+
+    public synchronized File lookup(String s) {
+        Map<String, File> customFiles = monitor.getInMemory().customFiles;
+        return customFiles.get(s);
+    }
+
+    private static class ArraysComp implements Comparator<String> {
+        public int compare(String o1, String o2) {
+            return o1.toLowerCase().compareTo(o2.toLowerCase());
         }
     }
 }

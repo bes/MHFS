@@ -33,10 +33,6 @@ import org.fourthline.cling.model.meta.Device;
 import org.fourthline.cling.model.meta.LocalDevice;
 import org.fourthline.cling.model.meta.RemoteDevice;
 import org.fourthline.cling.model.meta.Service;
-import org.fourthline.cling.model.types.DeviceType;
-import org.fourthline.cling.model.types.ServiceType;
-import org.fourthline.cling.model.types.UDADeviceType;
-import org.fourthline.cling.model.types.UDAServiceType;
 import org.fourthline.cling.registry.Registry;
 import org.fourthline.cling.registry.RegistryListener;
 import org.fourthline.cling.support.igd.PortMappingListener;
@@ -48,27 +44,34 @@ import se.bes.mhfs.manager.HFSMonitor;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
 
 public class UPnpServiceProxy {
+
+    public static final String SUPPORTED_DEVICE = "InternetGatewayDevice";
 
     private final UpnpService service;
 
     private final ArrayList<OnServiceChange> listeners = new ArrayList<>();
 
-    private final ArrayList<String> LOG = new ArrayList<>();
-
     private final HashMap<String, UpnpMapping> upnpMappings = new HashMap<>();
+
+    private static final HashMap<String, UpnpService> MAPPED_INTERFACES = new HashMap<>();
+
+    private final MHFSLogger logger;
 
     public interface OnServiceChange {
         Void onChange();
     }
 
-    public static class UpnpMapping {
-        public final int port;
-        public final String host;
-        public final Service service;
-        public final PortMapping portMapping;
+    private static class UpnpMapping {
+        final int port;
+        final String host;
+        final Service service;
+        final PortMapping portMapping;
 
         private UpnpMapping(int port, String host, Service service, PortMapping portMapping) {
             this.port = port;
@@ -78,10 +81,6 @@ public class UPnpServiceProxy {
         }
     }
 
-    private static final HashMap<String, UpnpService> MAPPED_INTERFACES = new HashMap<>();
-
-    private final MHFSLogger logger;
-
     public UPnpServiceProxy(MHFSLogger logger) {
         this.logger = logger;
 
@@ -90,14 +89,12 @@ public class UPnpServiceProxy {
             public void remoteDeviceDiscoveryStarted(Registry registry, RemoteDevice device) {}
 
             public void remoteDeviceDiscoveryFailed(Registry registry, RemoteDevice device, Exception ex) {
-                synchronized (LOG) {
-                    LOG.add("Discovery failed: " + device.getDisplayString() + " => " + ex);
-                }
+                logger.append("Discovery failed: " + device.getDisplayString() + " => " + ex);
                 notifyOnServiceChangeListeners();
             }
 
             public void remoteDeviceAdded(Registry registry, RemoteDevice device) {
-                System.out.println("Added " + device.getDisplayString());
+                logger.append("Found " + device.getDisplayString());
                 notifyOnServiceChangeListeners();
             }
 
@@ -105,7 +102,7 @@ public class UPnpServiceProxy {
             }
 
             public void remoteDeviceRemoved(Registry registry, RemoteDevice device) {
-                System.out.println("Removed " + device.getDisplayString());
+                logger.append("Removed " + device.getDisplayString());
                 notifyOnServiceChangeListeners();
             }
 
@@ -155,7 +152,7 @@ public class UPnpServiceProxy {
                     .getLocalHost().getHostName());
             for (InetAddress inetAddress : all) {
                 final String hostAddress = inetAddress.getHostAddress();
-                final int port = monitor.getPort();
+                final int port = monitor.getInMemory().port;
 
                 final String identifier = hostAddress + ":" + port;
 
@@ -203,23 +200,19 @@ public class UPnpServiceProxy {
         return MAPPED_INTERFACES.get(identifier);
     }
 
-    public static final DeviceType CONNECTION_DEVICE_TYPE = new UDADeviceType("WANConnectionDevice", 1);
-    public static final ServiceType IP_SERVICE_TYPE = new UDAServiceType("WANIPConnection", 1);
-    public static final ServiceType PPP_SERVICE_TYPE = new UDAServiceType("WANPPPConnection", 1);
-
     public void addPortMapping(final RemoteDevice device, int port, String host) {
 
-        Device[] connectionDevices = device.findDevices(CONNECTION_DEVICE_TYPE);
+        Device[] connectionDevices = device.findDevices(PortMappingListener.CONNECTION_DEVICE_TYPE);
         if (connectionDevices.length == 0) {
-            logger.append("IGD doesn't support '" + CONNECTION_DEVICE_TYPE + "': " + device);
+            logger.append("IGD doesn't support '" + PortMappingListener.CONNECTION_DEVICE_TYPE + "': " + device);
             return;
         }
 
         Device connectionDevice = connectionDevices[0];
         logger.append("Using first discovered WAN connection device: " + connectionDevice);
 
-        Service ipConnectionService = connectionDevice.findService(IP_SERVICE_TYPE);
-        Service pppConnectionService = connectionDevice.findService(PPP_SERVICE_TYPE);
+        Service ipConnectionService = connectionDevice.findService(PortMappingListener.IP_SERVICE_TYPE);
+        Service pppConnectionService = connectionDevice.findService(PortMappingListener.PPP_SERVICE_TYPE);
 
         if (ipConnectionService == null && pppConnectionService == null) {
             logger.append("IGD doesn't support IP or PPP WAN connection service: " + device);
@@ -246,23 +239,19 @@ public class UPnpServiceProxy {
 
                         @Override
                         public void success(ActionInvocation invocation) {
-                            synchronized (LOG) {
-                                LOG.add("Successfully added " + identifier + " on " + device.getDisplayString());
-                            }
+                            logger.append("Successfully added " + identifier + " on " + device.getDisplayString());
                             notifyOnServiceChangeListeners();
                         }
 
                         @Override
                         public void failure(ActionInvocation invocation, UpnpResponse operation, String defaultMsg) {
-                            synchronized (LOG) {
-                                LOG.add(defaultMsg);
-                            }
+                            logger.append(defaultMsg);
                             notifyOnServiceChangeListeners();
                         }
                     }
             );
         } else {
-            System.out.println("Couldn't find a service for " + device.getDisplayString());
+            logger.append("Couldn't find a service for " + device.getDisplayString());
         }
     }
 
@@ -283,9 +272,7 @@ public class UPnpServiceProxy {
                             synchronized (upnpMappings) {
                                 upnpMappings.remove(identifier);
                             }
-                            synchronized (LOG) {
-                                LOG.add("Successfully removed " + identifier);
-                            }
+                            logger.append("Successfully removed " + identifier);
                             notifyOnServiceChangeListeners();
                         }
 
@@ -294,21 +281,11 @@ public class UPnpServiceProxy {
                             synchronized (upnpMappings) {
                                 upnpMappings.remove(identifier);
                             }
-                            synchronized (LOG) {
-                                LOG.add(defaultMsg);
-                            }
+                            logger.append(defaultMsg);
                             notifyOnServiceChangeListeners();
                         }
                     }
             );
-        }
-    }
-
-    public ArrayList<String> getLog() {
-        synchronized (LOG) {
-            ArrayList<String> log = new ArrayList<>(LOG);
-            Collections.reverse(log);
-            return log;
         }
     }
 

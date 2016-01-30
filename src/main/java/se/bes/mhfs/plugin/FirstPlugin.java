@@ -36,7 +36,7 @@ public class FirstPlugin extends Plugin{
     protected PrintStream printStream;
 
     public FirstPlugin(HFSMonitor m){
-        super(m, "My First Plugin", "firstplugin.hfs");
+        super(m, "My First Plugin", null);
     }
 
     public void runPlugin(Socket s) {

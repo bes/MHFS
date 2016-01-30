@@ -25,61 +25,56 @@
 package se.bes.mhfs.manager;
 
 import se.bes.mhfs.events.UpdateEvent;
-import se.bes.mhfs.filesystem.DirList;
+import se.bes.mhfs.filesystem.CustomDirList;
 import se.bes.mhfs.filesystem.FSList;
+import se.bes.mhfs.logger.MHFSLogger;
 import se.bes.mhfs.network.NetworkInstance;
 import se.bes.mhfs.plugin.PluginManager;
 
 import java.io.File;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Observable;
 import java.util.Observer;
 
-public class HFSMonitor extends Observable implements Observer{
+public class HFSMonitor extends Observable implements Observer {
 
     public static final String NO_UPNP_IP = "UPnP IP: None";
     public static final String NO_UPNP_DEVICE = "UPnP Device: None";
 
     private final LinkedList<NetworkInstance> instanceList;
-    private final DirList dirList;
+    private final CustomDirList customDirList;
     private final FSList fsList;
     private final PluginManager plugins;
-    
-    private double speed = 0;
-    private int port = 8080;
-    private boolean alternateHTMLSet = false;
-    private String alternateHTML = "";
-    private boolean gotNetwork = false;
-    private String uploadDir;
+    private final MHFSLogger logger;
 
+    // Don't save these to file
     private String upnpHostNoSave;
+    private boolean gotNetwork = false;
 
-    public static class ImmutableSettings {
-        public final String upnpIp;
-        public final String upnpDevice;
+    // Defaults
+    private volatile ImmutableSettings inMemory = new ImmutableSettings.Builder()
+            .setPort(8080)
+            .setBaseDir(".")
+            .setUploadDir(new File(".").getAbsolutePath())
+            .setUpnpIp(NO_UPNP_IP)
+            .setUpnpDevice(NO_UPNP_DEVICE)
+            .setCustomFiles(new HashMap<>())
+            .build();
 
-        private ImmutableSettings(String upnpIp, String upnpDevice) {
-            this.upnpIp = upnpIp;
-            this.upnpDevice = upnpDevice;
-        }
-    }
+    private volatile ImmutableSettings inSettings = inMemory;
 
-    private ImmutableSettings inMemory = new ImmutableSettings(NO_UPNP_IP, NO_UPNP_DEVICE);
+    public HFSMonitor(MHFSLogger logger) {
+        this.logger = logger;
 
-    private ImmutableSettings inSettings = new ImmutableSettings(NO_UPNP_IP, NO_UPNP_DEVICE);
+        instanceList = new LinkedList<>();
+        customDirList = new CustomDirList(this);
+        customDirList.addObserver(this);
 
-    public HFSMonitor() {
-        instanceList = new LinkedList<NetworkInstance>();
-        dirList = new DirList();
-        dirList.addObserver(this);
-        
-        fsList = new FSList(".");
+        fsList = new FSList(this);
         fsList.addObserver(this);
         
         plugins = new PluginManager(this);
-        
-        File dir = new File(".");
-        uploadDir = dir.getAbsolutePath();
     }
 
     public ImmutableSettings getInSettings() {
@@ -90,16 +85,76 @@ public class HFSMonitor extends Observable implements Observer{
         return inMemory;
     }
 
-    public void inMemoryToSettings() {
+    public boolean needsSave() {
+        return !inMemory.equals(inSettings);
+    }
+
+    void inMemoryToSettings() {
         inSettings = inMemory;
+        sendNotification(UpdateEvent.Type.SETTINGS);
     }
 
     public void setUpnpIp(String upnpIp) {
-        inMemory = new ImmutableSettings(upnpIp, inMemory.upnpDevice);
+        inMemory = inMemory.buildUpon().setUpnpIp(upnpIp).build();
+        sendNotification(UpdateEvent.Type.SETTINGS);
     }
 
     public void setUpnpDevice(String upnpDevice) {
-        inMemory = new ImmutableSettings(inMemory.upnpIp, upnpDevice);
+        inMemory = inMemory.buildUpon().setUpnpDevice(upnpDevice).build();
+        sendNotification(UpdateEvent.Type.SETTINGS);
+    }
+
+    public void setUploadDir(String dir){
+        inMemory = inMemory.buildUpon().setUploadDir(dir).build();
+        sendNotification(UpdateEvent.Type.SETTINGS);
+    }
+
+    public void setPort(int port) {
+        inMemory = inMemory.buildUpon().setPort(port).build();
+        sendNotification(UpdateEvent.Type.SETTINGS, UpdateEvent.Type.IP_ADDRESS);
+    }
+
+    public void setBaseDir(String baseDir) {
+        inMemory.buildUpon().setBaseDir(baseDir).build();
+        sendNotification(UpdateEvent.Type.SETTINGS, UpdateEvent.Type.SHARED_FILES);
+    }
+
+    public void setSpeed(int speed) {
+        inMemory = inMemory.buildUpon().setSpeed(speed).build();
+        sendNotification(UpdateEvent.Type.SETTINGS);
+    }
+
+    public synchronized void addCustomFile(File file) {
+        int newNum = 1;
+        String name = file.getName();
+
+        while (inMemory.customFiles.get(name) != null) {
+            name = "[" + newNum + "]" + file.getName();
+            newNum++;
+        }
+
+        inMemory = inMemory.buildUpon().addCustomFile(name, file).build();
+
+        setChanged();
+        UpdateEvent evt = new UpdateEvent();
+        evt.addEvent(UpdateEvent.Type.SETTINGS, UpdateEvent.Type.SHARED_FILES, UpdateEvent.Type.CUSTOM_FILES);
+        notifyObservers(evt);
+    }
+
+    public synchronized void removeCustomFile(String name) {
+        inMemory = inMemory.buildUpon().removeCustomFile(name).build();
+        setChanged();
+        UpdateEvent evt = new UpdateEvent();
+        evt.addEvent(UpdateEvent.Type.SETTINGS, UpdateEvent.Type.SHARED_FILES, UpdateEvent.Type.CUSTOM_FILES);
+        notifyObservers(evt);
+    }
+
+    /*
+     *  <DON'T SAVE TO DISK>
+     */
+
+    public boolean isCustomList() {
+        return inMemory.customFiles.size() > 0;
     }
 
     public String getUpnpHost() {
@@ -110,86 +165,36 @@ public class HFSMonitor extends Observable implements Observer{
         this.upnpHostNoSave = upnpHost;
     }
 
+    public PluginManager getPluginManager(){
+        return plugins;
+    }
+
     public void setupPlugins(){
         plugins.setupPlugins();
     }
 
-    public int getPort() {
-        return port;
+    public CustomDirList getCustomDirList(){
+        return customDirList;
     }
 
-    public String getUploadDir(){
-        return uploadDir;
-    }
-    
-    public void setUploadDir(String dir){
-        this.uploadDir = dir;
-        setChanged();
-        UpdateEvent evt = new UpdateEvent();
-        evt.addEvent("settings", true);
-        notifyObservers(evt);
-    }
-    
-    public void setPort(int port) {
-        this.port = port;
-        setChanged();
-        UpdateEvent evt = new UpdateEvent();
-        evt.addEvent("settings", true);
-        evt.addEvent("ipAddress", true);
-        notifyObservers(evt);
-    }
-    
-    public DirList getDirList(){
-        return dirList;
-    }
-    
     public FSList getFSList(){
         return fsList;
     }
-    
-    public PluginManager getPluginManager(){
-        return plugins;
+
+    public MHFSLogger getLogger() {
+        return logger;
     }
 
     public synchronized void addNetworkInstance(NetworkInstance instance) {
         instance.start();
         instance.setMonitor(this);
         instanceList.add(instance);
-        setChanged();
-        UpdateEvent evt = new UpdateEvent();
-        evt.addEvent("progress", true);
-        notifyObservers(evt);
+        sendNotification(UpdateEvent.Type.PROGRESS);
     }
 
     public synchronized void removeNetworkInstance(NetworkInstance instance) {
         instanceList.remove(instance);
-        setChanged();
-        UpdateEvent evt = new UpdateEvent();
-        evt.addEvent("progress", true);
-        notifyObservers(evt);
-    }
-
-    public void setSpeed(double speed) {
-        this.speed = speed;
-        setChanged();
-        UpdateEvent evt = new UpdateEvent();
-        evt.addEvent("settings", true);
-        notifyObservers(evt);
-    }
-    
-    public double getSpeed(){
-        return speed;
-    }
-
-    public synchronized LinkedList<NetworkInstance> getNetworkInstances() {
-        return instanceList;
-    }
-
-    public double getShare() {
-        if (speed > 0) {
-            return speed / instanceList.size();
-        }
-        return 0;
+        sendNotification(UpdateEvent.Type.PROGRESS);
     }
 
     public synchronized void stopNet() {
@@ -199,38 +204,40 @@ public class HFSMonitor extends Observable implements Observer{
         }
     }
 
-    public void setAlternateHTML(String text) {
-        alternateHTML = text;
-        if (text.equals("")) {
-            alternateHTMLSet = false;
-        } else {
-            alternateHTMLSet = true;
+    public synchronized LinkedList<NetworkInstance> getNetworkInstances() {
+        return instanceList;
+    }
+
+    public double getShare() {
+        if (inMemory.speed > 0) {
+            return inMemory.speed / instanceList.size();
         }
-    }
-
-    public boolean isAlternateHTML() {
-        return alternateHTMLSet;
-    }
-
-    public String getAlternateHTML() {
-        return alternateHTML;
+        return 0;
     }
 
     public void setNetwork(boolean net) {
         this.gotNetwork = net;
-        setChanged();
-        UpdateEvent evt = new UpdateEvent();
-        evt.addEvent("settings", true);
-        evt.addEvent("progress", true);
-        notifyObservers(evt);
+        sendNotification(UpdateEvent.Type.SETTINGS, UpdateEvent.Type.PROGRESS);
     }
 
     public boolean getNetwork() {
         return gotNetwork;
     }
 
+    private void sendNotification(UpdateEvent.Type... types) {
+        setChanged();
+        UpdateEvent evt = new UpdateEvent();
+        evt.addEvent(types);
+        notifyObservers(evt);
+    }
+
+    @Override
     public void update(Observable o, Object arg) {
         setChanged();
         notifyObservers(arg);
     }
+
+    /*
+     *  </DON'T SAVE TO DISK>
+     */
 }

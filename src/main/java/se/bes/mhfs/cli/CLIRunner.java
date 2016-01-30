@@ -35,7 +35,7 @@ public class CLIRunner {
     
     public CLIRunner(){
         CLILogger logger = new CLILogger();
-        monitor = new HFSMonitor();
+        monitor = new HFSMonitor(logger);
         new SettingsManager(monitor).loadSettings();
 
         n = new Network(logger, monitor);
@@ -47,9 +47,9 @@ public class CLIRunner {
         printSettings();
     }
     
-    public CLIRunner(int port, double speed){
+    public CLIRunner(int port, int speed){
         CLILogger logger = new CLILogger();
-        monitor = new HFSMonitor();
+        monitor = new HFSMonitor(logger);
         new SettingsManager(monitor).loadSettings();
 
         monitor.setSpeed(speed);
@@ -64,8 +64,8 @@ public class CLIRunner {
     }
     
     public void printSettings(){
-        System.out.println("Port: " + monitor.getPort());
-        System.out.println("Max speed: " + monitor.getSpeed() + "kB/s (0 = unlimited)");
-        System.out.println("Upload dir: " + monitor.getUploadDir());
+        System.out.println("Port: " + monitor.getInMemory().port);
+        System.out.println("Max speed: " + monitor.getInMemory().speed + "kB/s (0 = unlimited)");
+        System.out.println("Upload dir: " + monitor.getInMemory().uploadDir);
     }
 }

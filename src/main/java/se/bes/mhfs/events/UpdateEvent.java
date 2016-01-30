@@ -24,24 +24,30 @@
 
 package se.bes.mhfs.events;
 
-import java.util.Hashtable;
+import java.util.Collections;
+import java.util.HashSet;
 
 public class UpdateEvent {
-    public final Hashtable<String, Boolean> updates;
-    
-    //boolean settings, boolean progress, boolean sharedFiles, boolean customFiles, boolean ipAddress
-    public UpdateEvent(){
-        updates = new Hashtable<String, Boolean>();
+    private final HashSet<Type> updates = new HashSet<>();
+
+    public enum Type {
+        SETTINGS,
+        PROGRESS,
+        IP_ADDRESS,
+        SHARED_FILES,
+        CUSTOM_FILES,
     }
     
-    public synchronized void addEvent(String s, boolean b){
-        updates.put(s, new Boolean(b));
+    public synchronized void addEvent(Type... types){
+        Collections.addAll(updates, types);
     }
     
-    public synchronized boolean getEvent(String s){
-        Boolean b =  updates.get(s);
-        if(b != null)
-            return b.booleanValue();
+    public synchronized boolean contains(Type... types) {
+        for (Type type : types) {
+            if (updates.contains(type)) {
+                return true;
+            }
+        }
         return false;
     }
 }

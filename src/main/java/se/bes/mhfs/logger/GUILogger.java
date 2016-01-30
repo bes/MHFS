@@ -24,19 +24,22 @@
 
 package se.bes.mhfs.logger;
 
-import javax.swing.JTextArea;
+import javax.swing.*;
 
 public class GUILogger implements MHFSLogger {
     
-    JTextArea jta;
+    private final JTextArea jta;
+
     public GUILogger(JTextArea jta){
         this.jta = jta;
     }
 
     public void append(String s) {
-        if(jta != null){
-            jta.append(s);
-        }
+        SwingUtilities.invokeLater(() -> {
+            if (jta != null && s != null){
+                final boolean addNewline = !s.endsWith("\n");
+                jta.append(s + (addNewline ? "\n" : ""));
+            }
+        });
     }
-
 }

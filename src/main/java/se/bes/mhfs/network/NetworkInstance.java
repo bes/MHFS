@@ -24,7 +24,7 @@
 
 package se.bes.mhfs.network;
 
-import se.bes.mhfs.filesystem.DirList;
+import se.bes.mhfs.filesystem.CustomDirList;
 import se.bes.mhfs.filesystem.FSList;
 import se.bes.mhfs.logger.MHFSLogger;
 import se.bes.mhfs.manager.HFSMonitor;
@@ -38,6 +38,7 @@ import java.awt.event.MouseListener;
 import java.io.*;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.URL;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.util.Hashtable;
@@ -50,7 +51,7 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
     private OutputStream mOut;
     private PrintStream mOutP;
     private MHFSLogger mLogArea;
-    private JProgressBar mProgress = new JProgressBar(0, 100);
+    private final JProgressBar mProgress = new JProgressBar(0, 100);
     private JLabel mLabel = new JLabel("Nothing");
     private JPopupMenu mPopupMenu = new JPopupMenu();
     private JMenuItem mItem;
@@ -78,7 +79,7 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
 
         updateLabel("Listing " + " ( " + s.getInetAddress().getHostAddress()
                 + " )");
-        mProgress.setStringPainted(true);
+        SwingUtilities.invokeLater(() -> mProgress.setStringPainted(true));
     }
 
     private void updateLabel(String text){
@@ -123,56 +124,43 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
             if (strings[0].toLowerCase().equals("post")) {
                 NetworkInstance.HTMLBegin(mOutP);
                 if (receiveFile()) {
-                    mOutP
-                            .println("File upload success!<br/><a href=\"/\">Back to file listing.</a>");
+                    mOutP.println("File upload success!<br/><a href=\"/\">Back to file listing.</a>");
                 } else {
-                    mOutP
-                            .println("File upload failure :/ File probably already exists. (Cannot overwrite)<br/><a href=\"/\">Back to file listing.</a>");
+                    mOutP.println("File upload failure :/ File probably already exists. (Cannot overwrite)<br/><a href=\"/\">Back to file listing.</a>");
                 }
                 NetworkInstance.HTMLEnd(mOutP);
             }
             // GET stuff
             // GET /
             else if (strings[1].length() == 0 || strings[1].equals("/")) {
-                if (mMonitor.isAlternateHTML()) {
-                    mLogArea.append("Alternate HTML List Sent. ( "
-                            + mSocket.getInetAddress().getHostAddress() + " )\n");
-                    mOutP.print("HTTP/1.0 200 OK\r\n" + "Content-Type: "
-                            + guessContentType(".html") + "\r\n\r\n");
-                    mOutP.println(mMonitor.getAlternateHTML());
+                if (mMonitor.isCustomList()) {
+                    printCustomDirList(mMonitor.getCustomDirList());
                 } else {
-                    DirList d = mMonitor.getDirList();
-                    if (d.isCustomList())
-                        printDirList(d, "");
-                    else
-                        printDirList2(/* monitor.getDirList(), */"");
+                    printStandardDirList("");
                 }
-                mProgress.setValue(100);
+                SwingUtilities.invokeLater(() -> mProgress.setValue(100));
             }
             // GET File
             else {
-                mProgress.setValue(0);
+                SwingUtilities.invokeLater(() -> mProgress.setValue(0));
                 String[] fname = strings[1].split("/");
-                String append = "";
 
-                File f = null;
-                DirList d = mMonitor.getDirList();
-                for (int i = 1; i < fname.length; i++) {
-                    DirList temp = d.lookupDir(URLDecoder.decode(fname[i],
-                            Charset.defaultCharset().toString()));
-                    if (temp != null) {
-                        d = temp;
-                        append += URLDecoder.decode(fname[i], Charset
-                                .defaultCharset().toString())
-                                + "/";
-                    }
-                }
-
-                if (d.isCustomList())
+                File f;
+                final CustomDirList d = mMonitor.getCustomDirList();
+                if (mMonitor.isCustomList()) {
                     f = d.lookup(URLDecoder.decode(fname[fname.length - 1],
                             Charset.defaultCharset().toString()));
-                else
+                } else {
                     f = getFile(strings[1]);
+                }
+
+                if (f == null && strings[1].toLowerCase().endsWith("favicon.ico")) {
+                    ClassLoader classLoader = getClass().getClassLoader();
+                    URL url = classLoader.getResource("favicon.ico");
+                    if (url != null) {
+                        f = new File(url.getFile());
+                    }
+                }
 
                 Plugin p = mMonitor.getPluginManager().getPluginByIdentifier(
                         URLDecoder.decode(fname[fname.length - 1], Charset
@@ -183,15 +171,11 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
                     p.runPlugin(mSocket);
                 } else if (f != null) {
                     sendFile(f); // send raw file
-                } else if (d.isCustomList()) {
-                    printDirList(d, append);
+                } else if (mMonitor.isCustomList()) {
+                    printCustomDirList(d);
                 } else {
-                    printDirList2(strings[1]);
-                    /*
-                     * } else { // not reachable !
-                     * NetworkInstance.HTMLBegin(outP); outP.println("NOT
-                     * ALLOWED!<br>"); NetworkInstance.HTMLEnd(outP);
-                     */}
+                    printStandardDirList(strings[1]);
+                }
             }
 
         } catch (Exception e) {
@@ -215,40 +199,18 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
     /*
      * append has appended \\ already
      */
-    private void printDirList(DirList dirList, String append) {
+    private void printCustomDirList(CustomDirList customDirList) {
         mLogArea.append("File List Sent. ( "
                 + mSocket.getInetAddress().getHostAddress() + " )\n");
         NetworkInstance.HTMLBegin(mOutP);
         mOutP.println("<table><tr>");
 
-        // dirList.traverse();
-
-        String[] dirs = dirList.getDirDirStrings();
-        String[] files = dirList.getDirStrings();
-
-        String[] upDirSplit = append.split("/");
-        String upDir = "";
-
-        for (int i = 0; i < upDirSplit.length - 1; i++) {
-            upDir += upDirSplit[i] + "/";
-        }
-
-        if (dirList != mMonitor.getDirList())
-            mOutP.println("<td align=\"right\" class=\"bread\">[ dir ] </td>"
-                    + "<td class=\"bread\"><a href=\"/" + upDir + "\">.."
-                    + "</a></td><tr>");
-
-        for (String d : dirs) {
-            mOutP.println("<td align=\"right\" class=\"bread\">[ dir ] </td>"
-                    + "<td class=\"bread\"><a href=\"/" + append + d + "\">"
-                    + d + "</a></td><tr>");
-        }
+        String[] files = customDirList.getDirStrings();
 
         for (String s : files) {
-            mOutP.println("<td align=\"right\" class=\"bread\">[ "
-                    + fixDecimals((double) dirList.lookup(s).length() / 1024.0)
-                    + " kB ] </td><td class=\"bread\"><a href=\"/" + append + s
-                    + "\">" + s + "</a></td><tr>");
+            mOutP.println(String
+                    .format("<td align=\"right\" class=\"bread\">[ %1$.2f kB ] </td><td class=\"bread\"><a href=\"/%2$s\">%2$s</a></td><tr>",
+                            (double) customDirList.lookup(s).length() / 1024d, s));
         }
         mOutP.println("</tr></table>");
         NetworkInstance.HTMLEnd(mOutP);
@@ -265,7 +227,7 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
         return null;
     }
 
-    private void printDirList2(String place) {
+    private void printStandardDirList(String place) {
         System.out.println("PLACE: " + place);
         FSList fs = mMonitor.getFSList();
 
@@ -296,10 +258,9 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
         }
 
         for (File s : files) {
-            mOutP.println("<td align=\"right\" class=\"bread\">[ "
-                    + fixDecimals((double) s.length() / 1024.0)
-                    + " kB ] </td><td class=\"bread\"><a href=\"" + place + "/"
-                    + s.getName() + "\">" + s.getName() + "</a></td><tr>");
+            mOutP.println(String
+                    .format("<td align=\"right\" class=\"bread\">[ %1$.2f kB ] </td><td class=\"bread\"><a href=\"%2$s/%3$s\">%3$s</a></td><tr>",
+                            (double) s.length() / 1024d, place, s.getName()));
         }
         mOutP.println("</tr></table>");
         NetworkInstance.HTMLEnd(mOutP);
@@ -359,7 +320,7 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
         // h�r efter �r in metodens in.
         //DataInputStream din = new DataInputStream(s.getInputStream());
 
-        mProgress.setValue(0);
+        SwingUtilities.invokeLater(() -> mProgress.setValue(0));
         // HTTP POST
         System.out.println("post!");
 
@@ -370,7 +331,7 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
         long countFactor = getProgressBarFactor(contentLength);
         long max = contentLength / countFactor;
 
-        mProgress.setMaximum((int) max);
+        SwingUtilities.invokeLater(() -> mProgress.setMaximum((int) max));
 
         String preBound = "--" + boundary;
         // String postBound = "--" + boundary + "--";
@@ -389,14 +350,12 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
                 if (splits.length == 2) {
                     info.put(splits[0], splits[1]);
                 } else {
-                    System.err
-                            .println("Error, Request had non \": \" separator");
+                    System.err.println("Error, Request had non \": \" separator");
                 }
                 line = readLine();// in.readLine();
                 contentLengthLeft -= line.length() + 4;
             }
 
-            // h�r har vi f�tt ut "infon"
             String contentDisposition = info.get("Content-Disposition");
             if (contentDisposition != null) {
                 String[] split = contentDisposition.split("filename=");
@@ -405,23 +364,13 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
                     String[] split2 = split[1].replaceAll("\"", "").split(
                             "\\\\");
                     filename = split2[split2.length - 1];
-                    File outF = new File(mMonitor.getUploadDir() + "\\"
+                    File outF = new File(mMonitor.getInMemory().uploadDir + "\\"
                             + filename);
                     if (outF.exists()) {
                         mLogArea.append("File receiving aborted: " + filename
                                 + " already exists ( "
                                 + mSocket.getInetAddress().getHostAddress() + " )\n");
-                        updateLabel("[R] File exists, " + filename + " / "
-                                + fixDecimals(contentLength / 1024.0) + " kB");
-                        // Funkar s�d�r va
-                        // progress.setMaximum((int)contentLength);
-                        // while(contentLengthLeft > 0 && running){
-                        // contentLengthLeft -= in.skip(in.available());
-                        // if(in.read() != -1);
-                        // contentLengthLeft--;
-                        // progress.setValue((int)(contentLength-contentLengthLeft));
-                        //
-                        // }
+                        updateLabel(String.format("[R] File exists, %s / %.2f kB", filename, contentLength / 1024d));
                         return false;
                     }
                     OutputStream outSF = new FileOutputStream(outF);
@@ -432,7 +381,6 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
                             + mSocket.getInetAddress().getHostAddress() + " )\n");
 
                     byte[] buffer = new byte[buffSize];
-                    // char[] c = new char[buffSize];
                     long timeNanos = System.nanoTime() - 1000000000;
                     long lastSize = 0;
 
@@ -445,18 +393,16 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
                         outSF.write(buffer, 0, readBytes);
 
                         contentLengthLeft -= readBytes;
-                        mProgress
-                                .setValue((int) ((contentLength - contentLengthLeft)/countFactor));
+                        final long fContentLengthLeft = contentLengthLeft;
+                        SwingUtilities.invokeLater(() -> mProgress.setValue((int) ((contentLength - fContentLengthLeft) / countFactor)));
 
                         final long timeDiffNanos = nanosBefore - timeNanos;
                         if (timeDiffNanos > 1000000000L) {
-                            double dBw = ((double) ((contentLength - contentLengthLeft) - lastSize))
-                                    / (1000L * (timeDiffNanos/1000000000L));
-                            mProgress
-                                    .setString(fixDecimals((double) ((double) (contentLength - contentLengthLeft) / (double) contentLength) * 100)
-                                            + "% / "
-                                            + fixDecimals(dBw)
-                                            + " kB/s");
+                            double dBw = ((double) ((contentLength - contentLengthLeft) - lastSize)) /
+                                    (1000L * (timeDiffNanos / 1000000000L));
+                            SwingUtilities.invokeLater(() -> mProgress.setString(String.format("%.2f%% / %.2f kB/s",
+                                    ((double) (contentLength - fContentLengthLeft) / (double) contentLength) *
+                                            100, dBw)));
                             timeNanos = System.nanoTime();
                             lastSize = (contentLength - contentLengthLeft);
                         }
@@ -474,17 +420,16 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
                     if (!running)
                         return false;
 
-                    // nu fixar vi filhelvetet
                     RandomAccessFile raf = new RandomAccessFile(outF, "rw");
-                    // detta �r bajs
                     if (raf.length() > 1024) {
                         raf.seek(raf.length() - 1024);
                     }
 
                     long removeBytes = 0;
-                    // fult
-                    while (!raf.readLine().equals(preBound))
-                        ;
+                    // Ugly
+                    while (!raf.readLine().equals(preBound)) {
+                        // Do nothing
+                    }
                     removeBytes = preBound.length() + 4;
                     try {
                         while (true) {
@@ -502,13 +447,13 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
                     return true;
                 }
             }
-            line = readLine();// in.readLine();
+            line = readLine();
         }
         return true;
     }
 
     private void sendFile(File f) throws InterruptedException {
-        int buffSize = 1024;
+        final int buffSize;
         try {
             buffSize = mSocket.getSendBufferSize();
         } catch (SocketException e) {
@@ -521,7 +466,7 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
         long countFactor = getProgressBarFactor(contentLength);
         long max = contentLength / countFactor;
 
-        mProgress.setMaximum((int) max);
+        SwingUtilities.invokeLater(() -> mProgress.setMaximum((int) max));
         // send file
         InputStream inputStream = null;
         long counter = 0;
@@ -563,14 +508,15 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
                 final long timeDiffNanos = nanosBefore - timeNanos;
                 if (timeDiffNanos > 1000000000L) {
                     double dBw = ((double) (counter - lastSize)) / (1000L * (timeDiffNanos/1000000000L));
-                    mProgress
-                            .setString(fixDecimals((double) ((double) counter / (double) (contentLength)) * 100)
-                                    + "% / " + fixDecimals(dBw) + " kB/s");
+                    final long fCounter = counter;
+                    SwingUtilities.invokeLater(() -> mProgress.setString(String
+                            .format("%.2f%% / %.2f kB/s", ((double) fCounter / (double) (contentLength)) * 100, dBw)));
                     timeNanos = System.nanoTime();
                     lastSize = counter;
                 }
                 counter += result;
-                mProgress.setValue((int) (counter / countFactor));
+                final long fCounter = counter;
+                SwingUtilities.invokeLater(() -> mProgress.setValue((int) (fCounter / countFactor)));
 
                 long nanosAfter = System.nanoTime();
                 // double secondsDiff = calcSecondsDiff(nanosBefore,
@@ -641,12 +587,6 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
         return tooMuch;
     }
 
-    private static String fixDecimals(double val) {
-        String value = Double.toString(val);
-        String[] split = value.split("\\.");
-        return split[0] + "." + split[1].substring(0, 1);
-    }
-
     public JProgressBar getProgressBar() {
         return mProgress;
     }
@@ -689,6 +629,5 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
                 System.out.println("Exception in NetworkInstance.mouseClicked() probable cause: operator shut down transfer");
             }
         }
-
     }
 }

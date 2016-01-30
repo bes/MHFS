@@ -26,50 +26,43 @@ package se.bes.mhfs.plugin;
 
 import java.io.FileInputStream;
 
-public class PluginClassLoader extends ClassLoader{
-    public PluginClassLoader(){
+public class PluginClassLoader extends ClassLoader {
+    public PluginClassLoader() {
         super(PluginClassLoader.class.getClassLoader());
     }
-    
-    public byte[] findClassBytes(String className){
 
-        try{
+    public byte[] findClassBytes(String className) {
+        try {
             String pathName = "plugins/" + className;
-            FileInputStream inFile = new
-                FileInputStream(pathName);
-            byte[] classBytes = new
-                byte[inFile.available()];
+            FileInputStream inFile = new FileInputStream(pathName);
+            byte[] classBytes = new byte[inFile.available()];
             inFile.read(classBytes);
             return classBytes;
-        }
-        catch (java.io.IOException ioEx){
+        } catch (java.io.IOException ioEx) {
             return null;
         }
     }
 
-    public Class<?> findClass(String name)throws
-        ClassNotFoundException{
+    public Class<?> findClass(String name) throws
+            ClassNotFoundException {
 
         byte[] classBytes = findClassBytes(name);
-        if (classBytes==null){
+        if (classBytes == null) {
             throw new ClassNotFoundException();
-        }
-        else{
-            return defineClass("plugin." + name.replace(".hfsplugin", ""), classBytes,
-                0, classBytes.length);
+        } else {
+            return defineClass("plugin." + name.replace(".hfsplugin", ""), classBytes, 0, classBytes.length);
         }
     }
 
     public Class findClass(String name, byte[]
-        classBytes)throws ClassNotFoundException{
+            classBytes) throws ClassNotFoundException {
 
-        if (classBytes==null){
+        if (classBytes == null) {
             throw new ClassNotFoundException(
-                "(classBytes==null)");
-        }
-        else{
+                    "(classBytes==null)");
+        } else {
             return defineClass(name, classBytes,
-                0, classBytes.length);
+                    0, classBytes.length);
         }
     }
 /*

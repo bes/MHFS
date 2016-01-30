@@ -30,7 +30,7 @@ public class CLIStart {
     public static void main(String[] args) {
         if(args.length == 2){
             int port = Integer.parseInt(args[0]);
-            double speed = Integer.parseInt(args[1]);
+            int speed = Integer.parseInt(args[1]);
             new CLIRunner(port, speed);
         }else{
             new CLIRunner();

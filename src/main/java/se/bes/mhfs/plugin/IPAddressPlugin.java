@@ -24,6 +24,7 @@
 
 package se.bes.mhfs.plugin;
 
+import se.bes.mhfs.events.UpdateEvent;
 import se.bes.mhfs.manager.HFSMonitor;
 import se.bes.mhfs.network.NetworkInstance;
 import se.datadosen.component.RiverLayout;
@@ -43,7 +44,7 @@ public class IPAddressPlugin extends Plugin {
     private String addresses = "";
 
     public IPAddressPlugin(HFSMonitor m) {
-        super(m, "IP Address/plugin", "ipAddress");
+        super(m, "IP Address/plugin", UpdateEvent.Type.IP_ADDRESS);
 
         Container content = this;
         content.setLayout(new RiverLayout());
@@ -82,14 +83,13 @@ public class IPAddressPlugin extends Plugin {
                     .getLocalHost().getHostName());
             for (int i = 0; i < all.length; i++) {
                 addresses = addresses + "Address " + (i + 1) + ": http://"
-                        + all[i].getHostAddress() + ":" + monitor.getPort()
+                        + all[i].getHostAddress() + ":" + monitor.getInMemory().port
                         + "\n";
             }
         } catch (UnknownHostException e) {
             e.printStackTrace();
         }
-        jtext
-                .setText("These are your IP Addresses.\n"
+        jtext.setText("These are your IP Addresses.\n"
                         + "Some of these might be local addresses (they might not be connected to the Internet).\n"
                         + "Make sure your router and/or firewall has the appropriate settings and forwards the correct port.\n\n"
                         + "" + addresses);

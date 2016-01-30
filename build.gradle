@@ -11,14 +11,27 @@ repositories {
 
 apply plugin: 'java'
 
+version = '0.1'
+
 // Dependencies common to all projects
 dependencies {
     compile "org.fourthline.cling:cling-core:2.0.1"
     compile "org.fourthline.cling:cling-support:2.0.1"
 }
 
-jar {
+//jar {
+//    manifest {
+//        attributes 'Main-Class': 'se.bes.mhfs.gui.MHFSGUI'
+//    }
+//}
+
+task fatJar(type: Jar) {
     manifest {
-        attributes 'Main-Class': 'se.bes.mhfs.gui.MHFSGUI'
+        attributes 'Implementation-Title': 'MHFS',
+                'Implementation-Version': version,
+                'Main-Class': 'se.bes.mhfs.gui.MHFSGUI'
     }
+    baseName = project.name + '-all'
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
 }

@@ -26,6 +26,7 @@ package se.bes.mhfs.gui;
 
 import org.fourthline.cling.model.meta.Device;
 import org.fourthline.cling.model.meta.RemoteDevice;
+import org.fourthline.cling.model.types.DeviceType;
 import se.bes.mhfs.events.UpdateEvent;
 import se.bes.mhfs.logger.GUILogger;
 import se.bes.mhfs.logger.MHFSLogger;
@@ -38,6 +39,8 @@ import se.bes.mhfs.upnp.UPnpServiceProxy;
 import se.datadosen.component.RiverLayout;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -48,39 +51,25 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.*;
 
-public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
+public class MHFSGUI extends JFrame implements WindowListener {
 
     private static final long serialVersionUID = 1L;
-    private JButton stopStartButton = new JButton("START");
-    private JButton saveButton = new JButton("Save");
-    private JButton htmlUpdateButton = new JButton("User HTML");
-    private JButton hfsHTMLUpdateButton = new JButton("HFS HTML");
-    private JButton chooseFileButton = new JButton("Add file(s)");
-    private JButton chooseBaseDirButton = new JButton("...");
-    private JButton chooseUploadDirButton = new JButton("...");
 
     private final JFileChooser jfc;
 
-    private JTextField portField;
-    private JTextField speedField;
-    private JTextField baseDirectory;
-    private JTextField uploadDirectory;
-    private JTextArea log = new JTextArea("Log:\n");
-    private JTextArea alternateHTMLArea;
-    private JComboBox<String> upnpIpSelect;
-    private JComboBox<UPnPDeviceLabel> upnpDeviceSelect;
-    private Network n;
-    private HFSMonitor monitor;
-    private MHFSGUI hfs = this;
+    private Network network;
+    private final HFSMonitor monitor;
 
+    private final JTextArea log = new JTextArea("Log:\n");
     private final MHFSLogger logger = new GUILogger(log);
 
     private final UPnpServiceProxy upnpProxy = new UPnpServiceProxy(logger);
 
-    public MHFSGUI() {
+    private MHFSGUI() {
         super("MHFS/Minimal Http File Server)");
 
-        monitor = new HFSMonitor();
+        monitor = new HFSMonitor(logger);
+        log.setEditable(false);
 
         new SettingsManager(monitor).loadSettings();
 
@@ -90,19 +79,13 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
 
         JTabbedPane tabbed = new JTabbedPane();
 
-        NetworkProgressPane npp = new NetworkProgressPane();
-        SettingsPane sp = new SettingsPane();
-        AlternateHTMLPagePane ahpp = new AlternateHTMLPagePane();
-        CustomFilePane cfp = new CustomFilePane();
-
-        tabbed.addTab("Settings", new JScrollPane(sp));
-        tabbed.addTab("Progress", new JScrollPane(npp));
+        tabbed.addTab("Settings", new JScrollPane(new SettingsPane()));
+        tabbed.addTab("Progress", new JScrollPane(new NetworkProgressPane()));
 //        tabbed.addTab("Shared Files", new JScrollPane(new SharedFilesPane()));
-        tabbed.addTab("Custom Files", new JScrollPane(cfp));
+        tabbed.addTab("Custom Files", new JScrollPane(new CustomFilePane()));
         tabbed.addTab("IP Address", new JScrollPane(new IPAddressPane()));
         tabbed.addTab("UPnP", new JScrollPane(new UPnPPane()));
         tabbed.addTab("Log", new JScrollPane(log));
-        tabbed.addTab("Alternate HTML", new JScrollPane(ahpp));
         tabbed.addTab("About", new JScrollPane(new AboutPane()));
 
         for(String s : monitor.getPluginManager().getPluginStrings()){
@@ -128,111 +111,107 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
         repaint();
     }
 
-    @Override
-    public void actionPerformed(ActionEvent a) {
-        if (a.getSource() == stopStartButton) {
-            if (monitor.getNetwork()) {
-                upnpProxy.unmapAllRegistered();
-                n.stopNet();
-                monitor.stopNet();
-                monitor.setNetwork(false);
-
-                portField.setEnabled(true);
-                upnpIpSelect.setEnabled(true);
-                upnpDeviceSelect.setEnabled(true);
-
-                if (!HFSMonitor.NO_UPNP_IP.equals(monitor.getUpnpHost())) {
-                    upnpProxy.removePortMapping(monitor.getPort(), monitor.getUpnpHost());
-                }
-
-                stopStartButton.setText("START");
-            } else {
-                int port = Integer.parseInt(portField.getText());
-                double speed = Double.parseDouble(speedField.getText());
-                monitor.setSpeed(speed);
-                monitor.setPort(port);
-                n = new Network(logger, monitor);
-                n.start();
-                monitor.setNetwork(true);
-
-                portField.setEnabled(false);
-                upnpIpSelect.setEnabled(false);
-                upnpDeviceSelect.setEnabled(false);
-
-                String ip = (String) upnpIpSelect.getSelectedItem();
-                UPnPDeviceLabel deviceLabel = (UPnPDeviceLabel) upnpDeviceSelect.getSelectedItem();
-                if (!HFSMonitor.NO_UPNP_IP.equals(ip) &&
-                        deviceLabel != null &&
-                        !HFSMonitor.NO_UPNP_DEVICE.equals(deviceLabel.toString())) {
-                    monitor.setUpnpHost(ip);
-                    upnpProxy.addPortMapping((RemoteDevice) deviceLabel.device, monitor.getPort(), monitor.getUpnpHost());
-                }
-
-                stopStartButton.setText("STOP");
-            }
-        } else if (a.getSource() == saveButton) {
-            int port = Integer.parseInt(portField.getText());
-            double speed = Double.parseDouble(speedField.getText());
-            monitor.setPort(port);
-            monitor.setSpeed(speed);
-            new SettingsManager(monitor).saveSettings();
-        } else if (a.getSource() == htmlUpdateButton) {
-            monitor.setAlternateHTML(alternateHTMLArea.getText());
-        } else if (a.getSource() == hfsHTMLUpdateButton) {
-            monitor.setAlternateHTML("");
-        } else if (a.getSource() == chooseFileButton) {
-            jfc.setFileSelectionMode(JFileChooser.FILES_ONLY);
-            jfc.setMultiSelectionEnabled(true);
-            int returnVal = jfc.showOpenDialog(this);
-            if (returnVal == JFileChooser.APPROVE_OPTION) {
-                File[] files = jfc.getSelectedFiles();
-                for (File f : files)
-                    monitor.getDirList().addCustom(f);
-            }
-            jfc.setMultiSelectionEnabled(false);
-        } else if (a.getSource() == chooseBaseDirButton) {
-            jfc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-            int returnVal = jfc.showOpenDialog(this);
-            if (returnVal == JFileChooser.APPROVE_OPTION) {
-                File file = jfc.getSelectedFile();
-                monitor.getFSList().setBaseDir(file.getAbsolutePath());
-            }
-        } else if (a.getSource() == chooseUploadDirButton) {
-            jfc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-            int returnVal = jfc.showOpenDialog(this);
-            if (returnVal == JFileChooser.APPROVE_OPTION) {
-                File file = jfc.getSelectedFile();
-                monitor.setUploadDir(file.getAbsolutePath());
-            }
-        }
-    }
-
     public static void main(String[] args) {
         JFrame frame = new MHFSGUI();
         frame.setVisible(true);
     }
 
 
-    public class SettingsPane extends Container implements Observer, UPnpServiceProxy.OnServiceChange {
+    private class SettingsPane extends Container implements Observer, UPnpServiceProxy.OnServiceChange {
         private static final long serialVersionUID = 1L;
 
         private boolean defaultUpnpSelected = false;
         private boolean defaultIpSelected = false;
 
-        public SettingsPane() {
+        private final JButton startStopButton = new JButton("START");
+        private final JButton saveButton = new JButton("Save settings");
+        private JTextField portField;
+        private JTextField speedField;
+        private JTextField baseDirectory;
+        private JTextField uploadDirectory;
+        private final JButton chooseBaseDirButton = new JButton("...");
+        private final JButton chooseUploadDirButton = new JButton("...");
+        private JComboBox<String> upnpIpSelect;
+        private JComboBox<UPnPDeviceLabel> upnpDeviceSelect;
+
+        SettingsPane() {
             monitor.addObserver(this);
             Container content = this;
             content.setLayout(new RiverLayout());
 
-            stopStartButton.addActionListener(hfs);
-            saveButton.addActionListener(hfs);
-            chooseBaseDirButton.addActionListener(hfs);
-            chooseUploadDirButton.addActionListener(hfs);
+            startStopButton.addActionListener(e -> {
+                if (monitor.getNetwork()) {
+                    network.stopNet();
+                    monitor.stopNet();
+                    monitor.setNetwork(false);
 
-            portField = new JTextField(Integer.toString(monitor.getPort()), 4);
-            speedField = new JTextField(Double.toString(monitor.getSpeed()), 10);
-            baseDirectory = new JTextField(monitor.getFSList().getBaseDir());
-            uploadDirectory = new JTextField(monitor.getUploadDir());
+                    if (!HFSMonitor.NO_UPNP_IP.equals(monitor.getUpnpHost())) {
+                        upnpProxy.removePortMapping(monitor.getInMemory().port, monitor.getUpnpHost());
+                    }
+                } else {
+                    network = new Network(logger, monitor);
+                    network.start();
+                    monitor.setNetwork(true);
+
+                    String ip = (String) upnpIpSelect.getSelectedItem();
+                    UPnPDeviceLabel deviceLabel = (UPnPDeviceLabel) upnpDeviceSelect.getSelectedItem();
+                    if (!HFSMonitor.NO_UPNP_IP.equals(ip) &&
+                            deviceLabel != null &&
+                            !HFSMonitor.NO_UPNP_DEVICE.equals(deviceLabel.toString())) {
+                        monitor.setUpnpHost(ip);
+                        upnpProxy.addPortMapping((RemoteDevice) deviceLabel.device, monitor.getInMemory().port, monitor.getUpnpHost());
+                    }
+                }
+
+                evaluateStartStopButton();
+            });
+
+            saveButton.addActionListener(e -> {
+                new SettingsManager(monitor).saveSettings();
+            });
+            saveButton.setEnabled(monitor.needsSave());
+
+            chooseBaseDirButton.addActionListener(e -> {
+                jfc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+                int returnVal = jfc.showOpenDialog(this);
+                if (returnVal == JFileChooser.APPROVE_OPTION) {
+                    File file = jfc.getSelectedFile();
+                    monitor.setBaseDir(file.getAbsolutePath());
+                }
+            });
+            chooseUploadDirButton.addActionListener(e -> {
+                jfc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+                int returnVal = jfc.showOpenDialog(this);
+                if (returnVal == JFileChooser.APPROVE_OPTION) {
+                    File file = jfc.getSelectedFile();
+                    monitor.setUploadDir(file.getAbsolutePath());
+                }
+            });
+
+            portField = new JTextField(Integer.toString(monitor.getInMemory().port), 4);
+            portField.getDocument().addDocumentListener(new SimpleDocumentListener() {
+                @Override
+                public void onEvent(DocumentEvent e) {
+                    try {
+                        monitor.setPort(Integer.parseInt(portField.getText()));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            });
+
+            speedField = new JTextField(Integer.toString(monitor.getInMemory().speed), 10);
+            speedField.getDocument().addDocumentListener(new SimpleDocumentListener() {
+                @Override
+                public void onEvent(DocumentEvent e) {
+                    try {
+                        monitor.setSpeed(Integer.parseInt(speedField.getText()));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            });
+
+            baseDirectory = new JTextField(monitor.getInMemory().baseDir);
+            uploadDirectory = new JTextField(monitor.getInMemory().uploadDir);
             baseDirectory.setEnabled(false);
             uploadDirectory.setEnabled(false);
 
@@ -276,14 +255,27 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
             content.add("", new JLabel("to"));
             content.add("hfill", upnpIpSelect);
             content.add("p left", saveButton);
-            content.add("", stopStartButton);
+            content.add("", startStopButton);
             content.add("", new NetworkIndicatorComponent());
 
             upnpProxy.addListener(this);
         }
 
-        private void updateNetwork() {
+        private void evaluateStartStopButton() {
+            if (!monitor.getNetwork()) {
+                portField.setEnabled(true);
+                upnpIpSelect.setEnabled(true);
+                upnpDeviceSelect.setEnabled(true);
+                startStopButton.setText("START");
+            } else {
+                portField.setEnabled(false);
+                upnpIpSelect.setEnabled(false);
+                upnpDeviceSelect.setEnabled(false);
+                startStopButton.setText("STOP");
+            }
+        }
 
+        private void updateNetwork() {
             HashSet<String> removeSet = new HashSet<>();
             for (int i = 1; i < upnpIpSelect.getItemCount(); i++) {
                 removeSet.add(upnpIpSelect.getItemAt(i));
@@ -327,7 +319,6 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
         }
 
         private void updateUpnpDevices() {
-
             HashSet<Device> removeSet = new HashSet<>();
             for (int i = 1; i < upnpDeviceSelect.getItemCount(); i++) {
                 removeSet.add(upnpDeviceSelect.getItemAt(i).device);
@@ -337,7 +328,10 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
                 if (removeSet.contains(device)) {
                     removeSet.remove(device);
                 } else {
-                    upnpDeviceSelect.addItem(new UPnPDeviceLabel(device));
+                    DeviceType type = device.getType();
+                    if (type.getType().equalsIgnoreCase(UPnpServiceProxy.SUPPORTED_DEVICE)) {
+                        upnpDeviceSelect.addItem(new UPnPDeviceLabel(device));
+                    }
                 }
             }
 
@@ -367,12 +361,29 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
         @Override
         public void update(Observable o, Object arg) {
             SwingUtilities.invokeLater(() -> {
-                if (((UpdateEvent) arg).getEvent("settings")) {
-                    baseDirectory.setText(monitor.getFSList().getBaseDir());
-                    speedField.setText(Double.toString(monitor.getSpeed()));
-                    portField.setText(Integer.toString(monitor.getPort()));
-                    uploadDirectory.setText(monitor.getUploadDir());
-                } else if (((UpdateEvent) arg).getEvent("ipAddress")) {
+                if (((UpdateEvent) arg).contains(UpdateEvent.Type.SETTINGS)) {
+                    final String baseDir = monitor.getInMemory().baseDir;
+                    if (!baseDirectory.getText().equals(baseDir)) {
+                        baseDirectory.setText(baseDir);
+                    }
+                    String monitorSpeed = Integer.toString(monitor.getInMemory().speed);
+                    if (!speedField.getText().equals(monitorSpeed)) {
+                        speedField.setText(monitorSpeed);
+                    }
+                    String monitorPort = Integer.toString(monitor.getInMemory().port);
+                    if (!portField.getText().equals(monitorPort)) {
+                        portField.setText(monitorPort);
+                    }
+                    String monitorUploadDir = monitor.getInMemory().uploadDir;
+                    if (!uploadDirectory.getText().equals(monitorUploadDir)) {
+                        uploadDirectory.setText(monitorUploadDir);
+                    }
+
+                    evaluateStartStopButton();
+
+                    saveButton.setEnabled(monitor.needsSave());
+                }
+                if (((UpdateEvent) arg).contains(UpdateEvent.Type.IP_ADDRESS)) {
                     updateNetwork();
                 }
             });
@@ -386,11 +397,11 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
         }
     }
 
-    public class NetworkIndicatorComponent extends JComponent implements
+    private class NetworkIndicatorComponent extends JComponent implements
             Observer {
         private static final long serialVersionUID = 1L;
 
-        public NetworkIndicatorComponent() {
+        NetworkIndicatorComponent() {
             monitor.addObserver(this);
         }
 
@@ -423,17 +434,20 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
 
         @Override
         public void update(Observable arg0, Object arg1) {
-            if (((UpdateEvent) arg1).getEvent("settings"))
-                repaint();
+            SwingUtilities.invokeLater(() -> {
+                if (((UpdateEvent) arg1).contains(UpdateEvent.Type.SETTINGS)) {
+                    repaint();
+                }
+            });
         }
 
     }
 
-    public class NetworkProgressPane extends Container implements Observer {
+    private class NetworkProgressPane extends Container implements Observer {
         private static final long serialVersionUID = 1L;
         private Container c;
 
-        public NetworkProgressPane() {
+        NetworkProgressPane() {
             c = this;
 
             monitor.addObserver(this);
@@ -457,8 +471,11 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
 
         @Override
         public void update(Observable arg0, Object arg1) {
-            if (((UpdateEvent) arg1).getEvent("progress"))
-                updateGfx();
+            SwingUtilities.invokeLater(() -> {
+                if (((UpdateEvent) arg1).contains(UpdateEvent.Type.PROGRESS)) {
+                    updateGfx();
+                }
+            });
         }
     }
 
@@ -480,15 +497,15 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
             c.add("p left", new JLabel("Shared Files:"));
             c.add("br hfill", new JLabel(""));
 
-            if(monitor.getDirList().isCustomList())
-                recurseFolder(monitor.getDirList());
+            if(monitor.getCustomDirList().isCustomList())
+                recurseFolder(monitor.getCustomDirList());
             else
                 recurseFolder2(monitor.getFSList());
 
             repaint();
         }
 
-        private void recurseFolder(DirList d){
+        private void recurseFolder(CustomDirList d){
             String[] dirs = d.getDirDirStrings();
             for(String s : dirs){
                 recurseFolder(d.lookupDir(s));
@@ -525,17 +542,36 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
     }
 */
 
-    public class CustomFilePane extends Container implements Observer,
+    private class CustomFilePane extends Container implements Observer,
             ActionListener {
         private static final long serialVersionUID = 1L;
         private Container c;
+        private JButton chooseFileButton = new JButton("Add file(s)");
+        private JButton saveButton = new JButton("Save settings");
 
-        public CustomFilePane() {
+        CustomFilePane() {
             c = this;
 
             monitor.addObserver(this);
 
-            chooseFileButton.addActionListener(hfs);
+            chooseFileButton.addActionListener(e -> {
+                jfc.setFileSelectionMode(JFileChooser.FILES_ONLY);
+                jfc.setMultiSelectionEnabled(true);
+                int returnVal = jfc.showOpenDialog(this);
+                if (returnVal == JFileChooser.APPROVE_OPTION) {
+                    File[] files = jfc.getSelectedFiles();
+                    for (File f : files) {
+                        monitor.addCustomFile(f);
+                    }
+                }
+                jfc.setMultiSelectionEnabled(false);
+            });
+
+            saveButton.addActionListener(e -> {
+                new SettingsManager(monitor).saveSettings();
+            });
+            saveButton.setEnabled(monitor.needsSave());
+
             c.setLayout(new RiverLayout());
             updateGfx();
         }
@@ -544,15 +580,16 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
             c.removeAll();
 
             c.add("p left", chooseFileButton);
+            c.add("", saveButton);
             c.add("br hfill", new JLabel(""));
 
             // LinkedList<FileDescriptor> lnf = monitor.getCustomFiles();
 
-            if (monitor.getDirList().isCustomList()) {
-                String[] dirs = monitor.getDirList().getDirStrings();
+            if (monitor.isCustomList()) {
+                String[] dirs = monitor.getCustomDirList().getDirStrings();
                 for (String s : dirs) {
                     JButton b = new JButton(s);
-                    File f = monitor.getDirList().lookup(s);
+                    File f = monitor.getCustomDirList().lookup(s);
                     b.addActionListener(this);
                     c.add("tab left", b);
                     c.add("tab left", new JLabel(f.getAbsolutePath()));
@@ -566,23 +603,26 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
         @Override
         public void update(Observable arg0, Object arg1) {
             SwingUtilities.invokeLater(() -> {
-                if (((UpdateEvent) arg1).getEvent("customFiles"))
+                if (((UpdateEvent) arg1).contains(UpdateEvent.Type.CUSTOM_FILES)) {
                     updateGfx();
+                }
+                if (((UpdateEvent) arg1).contains(UpdateEvent.Type.SETTINGS)) {
+                    saveButton.setEnabled(monitor.needsSave());
+                }
             });
         }
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            monitor.getDirList().removeCustom(
-                    ((JButton) e.getSource()).getText());
+            monitor.removeCustomFile(((JButton) e.getSource()).getText());
         }
     }
 
-    public class IPAddressPane extends Container implements Observer {
+    private class IPAddressPane extends Container implements Observer {
         private Container ipAddressContainer;
         private static final long serialVersionUID = 1L;
 
-        public IPAddressPane() {
+        IPAddressPane() {
             Container content = this;
             content.setLayout(new RiverLayout());
 
@@ -611,10 +651,10 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
                         .getLocalHost().getHostName());
                 for (int i = 0; i < all.length; i++) {
                     final String hostAddress = all[i].getHostAddress();
-                    final int port = monitor.getPort();
+                    final int port = monitor.getInMemory().port;
 
                     ipAddressContainer.add("p", new JLabel("Address " + (i + 1) + ": http://"
-                            + hostAddress + ":" + monitor.getPort()));
+                            + hostAddress + ":" + monitor.getInMemory().port));
                 }
             } catch (UnknownHostException e) {
                 e.printStackTrace();
@@ -626,7 +666,7 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
         @Override
         public void update(Observable o, Object arg) {
             SwingUtilities.invokeLater(() -> {
-                if (((UpdateEvent) arg).getEvent("ipAddress")) {
+                if (((UpdateEvent) arg).contains(UpdateEvent.Type.IP_ADDRESS)) {
                     updateGfx();
                 }
             });
@@ -634,11 +674,11 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
 
     }
 
-    public class UPnPPane extends Container implements Observer, UPnpServiceProxy.OnServiceChange {
+    private class UPnPPane extends Container implements Observer, UPnpServiceProxy.OnServiceChange {
         private Container upnpDeviceContainer;
         private static final long serialVersionUID = 1L;
 
-        public UPnPPane() {
+        UPnPPane() {
             Container content = this;
             content.setLayout(new RiverLayout());
 
@@ -649,7 +689,7 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
 
             updateGfx();
 
-            content.add("p hfill", new JLabel("UPnP"));
+            content.add("p hfill", new JLabel("UPnP devices on your network"));
             content.add("p hfill vfill", upnpDeviceContainer);
 
             monitor.addObserver(this);
@@ -660,14 +700,8 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
 
             Collection<Device> devices = upnpProxy.getDevices();
             for (Device device : devices) {
-                JButton button = new JButton(device.getDisplayString());
-                upnpDeviceContainer.add("p hfill", button);
+                upnpDeviceContainer.add("br hfill", new JLabel(device.getDisplayString()));
             }
-
-            JTextPane textPane = new JTextPane();
-            textPane.setEditable(false);
-            textPane.setText(String.join("\n", upnpProxy.getLog()));
-            upnpDeviceContainer.add(textPane);
 
             repaint();
             globalRepaint();
@@ -676,7 +710,7 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
         @Override
         public void update(Observable o, Object arg) {
             SwingUtilities.invokeLater(() -> {
-                if (((UpdateEvent) arg).getEvent("ipAddress")) {
+                if (((UpdateEvent) arg).contains(UpdateEvent.Type.IP_ADDRESS)) {
                     updateGfx();
                 }
             });
@@ -691,33 +725,11 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
         }
     }
 
-    public class AlternateHTMLPagePane extends Container {
+    private class AboutPane extends Container {
 
         private static final long serialVersionUID = 1L;
 
-        public AlternateHTMLPagePane() {
-            Container content = this;
-            content.setLayout(new RiverLayout());
-
-            alternateHTMLArea = new JTextArea();
-            alternateHTMLArea
-                    .setText("<html>\n<head>\n<title>HFS/Minimal</title>\n</head>\n<body>\nHFS/Minimal\n<br/>\n<form action=\"/\" method=\"post\" enctype=\"multipart/form-data\">\n<input name=\"zipfile\" type=\"file\" /><br />\n<input type=\"submit\" name=\"submit\" value=\"Submit File\">\n</form>\n</body>\n</html>\n");
-
-            htmlUpdateButton.addActionListener(hfs);
-            hfsHTMLUpdateButton.addActionListener(hfs);
-
-            content.add("p hfill", new JLabel("Alternate HTML Page:"));
-            content.add("p hfill vfill", alternateHTMLArea);
-            content.add("p left", htmlUpdateButton);
-            content.add("left", hfsHTMLUpdateButton);
-        }
-    }
-
-    public class AboutPane extends Container {
-
-        private static final long serialVersionUID = 1L;
-
-        public AboutPane() {
+        AboutPane() {
             Container content = this;
             content.setLayout(new RiverLayout());
 
@@ -728,20 +740,14 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
             jtext.setWrapStyleWord(true);
             // jtext.setMaximumSize(new Dimension(20,30));
 
-            jtext
-                    .setText("Minimal HTTP File Server (MHFS) for file uploads/downloads.\n"
+            jtext.setText("Minimal HTTP File Server (MHFS) for file uploads/downloads.\n"
                             + "\n"
                             + "FAQ:\n"
                             + "Q: Why is my status Offline (Red ball)\n"
-                            + "A: Port 80 is probably not available on your computer, choose another port and click \"Save\" then \"STOP\" and then \"START\".\n"
-                            + "\n"
-                            + "Q: Nothing happens when i change the port.\n"
-                            + "A: Press \"STOP\" then \"START\" to change port. Beware: this will cancel any and all transfers.\n"
-                            + "\n"
-                            + "Q: Noting happens when i change the bandwidth limit.\n"
-                            + "A: Press \"Save\".");
+                            + "A: The port you want to use is probably not available on your computer, choose another port and click \"Save\" then \"STOP\" and then \"START\". You can also check the log for error messages.\n"
+                            );
 
-            content.add("p hfill", new JLabel("FAQ"));
+            content.add("p hfill", new JLabel("About"));
             content.add("p vfill hfill", new JScrollPane(jtext));
         }
     }
@@ -806,5 +812,24 @@ public class MHFSGUI extends JFrame implements ActionListener, WindowListener {
         public String toString() {
             return HFSMonitor.NO_UPNP_DEVICE;
         }
+    }
+
+    private static abstract class SimpleDocumentListener implements DocumentListener {
+        @Override
+        public final void insertUpdate(DocumentEvent e) {
+            onEvent(e);
+        }
+
+        @Override
+        public final void removeUpdate(DocumentEvent e) {
+            onEvent(e);
+        }
+
+        @Override
+        public final void changedUpdate(DocumentEvent e) {
+            onEvent(e);
+        }
+
+        abstract public void onEvent(DocumentEvent e);
     }
 }

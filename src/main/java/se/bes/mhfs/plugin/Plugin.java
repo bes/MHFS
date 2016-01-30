@@ -34,14 +34,14 @@ import java.util.Observable;
 import java.util.Observer;
 
 public abstract class Plugin extends Container implements Observer{
-    private String identifier;
+    private final UpdateEvent.Type[] eventTypes;
     private String name;
     private Socket s;
     protected final HFSMonitor monitor;
     private static final long serialVersionUID = 1L;
 
-    public Plugin(HFSMonitor monitor, String name, String identifier){
-        this.identifier = identifier;
+    public Plugin(HFSMonitor monitor, String name, UpdateEvent.Type... eventTypes) {
+        this.eventTypes = eventTypes;
         this.name = name;
         this.monitor = monitor;
         monitor.getPluginManager().registerPlugin(this);
@@ -53,7 +53,7 @@ public abstract class Plugin extends Container implements Observer{
     public abstract void updateGfx();
 
     public void update(Observable o, Object arg) {
-        if (((UpdateEvent) arg).getEvent(identifier))
+        if (((UpdateEvent) arg).contains(eventTypes))
             updateGfx();
     }
     
@@ -64,8 +64,8 @@ public abstract class Plugin extends Container implements Observer{
         return s;
     }
     
-    public String getIdentifier(){
-        return identifier;
+    public UpdateEvent.Type[] getEventTypes() {
+        return eventTypes;
     }
     
     public String getName(){

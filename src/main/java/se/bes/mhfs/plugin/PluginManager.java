@@ -31,16 +31,15 @@ import java.io.FileFilter;
 import java.util.Hashtable;
 
 public class PluginManager {
-    private Hashtable<String, Plugin> plugins;
+    private final Hashtable<String, Plugin> plugins = new Hashtable<>();
     private HFSMonitor monitor;
 
     public PluginManager(HFSMonitor monitor) {
         this.monitor = monitor;
-        plugins = new Hashtable<String, Plugin>();
     }
 
     public synchronized void registerPlugin(Plugin plugin) {
-        plugins.put(plugin.getIdentifier(), plugin);
+        plugins.put(plugin.getName(), plugin);
     }
 
     public synchronized Plugin getPluginByIdentifier(String identifier) {
@@ -57,9 +56,6 @@ public class PluginManager {
     public void setupPlugins() {
         File pluginDir = new File("./plugins/");
 
-        if(pluginDir == null)
-            return;
-        
         File[] files = pluginDir.listFiles(new FileFilter() {
             public boolean accept(File pathname) {
                 return pathname.isFile() && pathname.getName().endsWith(".hfsplugin");

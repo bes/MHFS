@@ -44,16 +44,18 @@ public class SettingsManager {
         PrintWriter buffer;
 
         try {
+            final ImmutableSettings inMemory = monitor.getInMemory();
+
             System.out.println("Saving to " + saveFile.getAbsolutePath());
             buffer = new PrintWriter(new FileOutputStream(saveFile));
-            buffer.println("Port::" + monitor.getPort());
-            buffer.println("Speed::" + monitor.getSpeed());
-            buffer.println("Directory::" + monitor.getFSList().getBaseDir());
-            buffer.println("UploadDirectory::" + monitor.getUploadDir());
-            buffer.println("UPnPInterface::" + monitor.getInMemory().upnpIp);
-            buffer.println("UPnPDevice::" + monitor.getInMemory().upnpDevice);
-            if (monitor.getDirList().isCustomList()) {
-                File[] files = monitor.getDirList().getDirFiles();
+            buffer.println("Port::" + inMemory.port);
+            buffer.println("Speed::" + inMemory.speed);
+            buffer.println("Directory::" + inMemory.baseDir);
+            buffer.println("UploadDirectory::" + inMemory.uploadDir);
+            buffer.println("UPnPInterface::" + inMemory.upnpIp);
+            buffer.println("UPnPDevice::" + inMemory.upnpDevice);
+            if (monitor.isCustomList()) {
+                File[] files = monitor.getCustomDirList().getDirFiles();
                 for (File f : files) {
                     buffer.println("CustomFile::" + f.getAbsolutePath());
                 }
@@ -77,20 +79,36 @@ public class SettingsManager {
             while (line != null) {
                 String[] split = line.split("::");
 
-                if (split[0].equals("Port")) {
-                    monitor.setPort(Integer.parseInt(split[1]));
-                } else if (split[0].equals("Speed")) {
-                    monitor.setSpeed(Double.parseDouble(split[1]));
-                } else if (split[0].equals("Directory")) {
-                    monitor.getFSList().setBaseDir(split[1]);
-                } else if (split[0].equals("UploadDirectory")) {
-                    monitor.setUploadDir(split[1]);
-                } else if (split[0].equals("CustomFile")) {
-                    monitor.getDirList().addCustom(new File(split[1]));
-                } else if (split[0].equals("UPnPInterface")) {
-                    monitor.setUpnpIp(split[1]);
-                } else if (split[0].equals("UPnPDevice")) {
-                    monitor.setUpnpDevice(split[1]);
+                switch (split[0]) {
+                    case "Port":
+                        try {
+                            monitor.setPort(Integer.parseInt(split[1]));
+                        } catch (NumberFormatException ignore) {
+                            monitor.setPort(8080);
+                        }
+                        break;
+                    case "Speed":
+                        try {
+                            monitor.setSpeed(Integer.parseInt(split[1]));
+                        } catch (NumberFormatException ignore) {
+                            monitor.setSpeed(0);
+                        }
+                        break;
+                    case "Directory":
+                        monitor.setBaseDir(split[1]);
+                        break;
+                    case "UploadDirectory":
+                        monitor.setUploadDir(split[1]);
+                        break;
+                    case "CustomFile":
+                        monitor.addCustomFile(new File(split[1]));
+                        break;
+                    case "UPnPInterface":
+                        monitor.setUpnpIp(split[1]);
+                        break;
+                    case "UPnPDevice":
+                        monitor.setUpnpDevice(split[1]);
+                        break;
                 }
 
                 line = buffer.readLine();
