@@ -24,6 +24,9 @@ dependencies {
 //        attributes 'Main-Class': 'se.bes.mhfs.gui.MHFSGUI'
 //    }
 //}
+compileJava {
+    options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation"
+}
 
 task fatJar(type: Jar) {
     manifest {

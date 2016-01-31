@@ -5,6 +5,8 @@ First written in 2006, updated and published to GitHub in 2016.
 
 Requires a Java 8 runtime.
 
+![Screenshot of the Settings tab](./mhfs_settings.png)
+
 #Capabilities
 
 * Rate limiting
@@ -19,6 +21,7 @@ Requires a Java 8 runtime.
 * Jar file distribution
 * Simple to use
 * Clean up the 10 year old code
+* Either make the CLI fully featured or remove it
 
 #Build
 ```bash

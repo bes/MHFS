@@ -52,12 +52,12 @@ public class RiverLayout
    public static final String VTOP = "vtop";
    public static final String VCENTER = "vcenter";
 
-   Map constraints = new HashMap();
-   String valign = VCENTER;
-   int hgap;
-   int vgap;
-   Insets extraInsets;
-   Insets totalInsets = new Insets(0, 0, 0, 0);// Dummy values. Set by getInsets()
+   private Map<Component, String> constraints = new HashMap<>();
+   private String valign = VCENTER;
+   private int hgap;
+   private int vgap;
+   private Insets extraInsets;
+   private Insets totalInsets = new Insets(0, 0, 0, 0);// Dummy values. Set by getInsets()
 
 
    public RiverLayout() {
@@ -135,9 +135,9 @@ public class RiverLayout
    }
 
    boolean isFirstInRow(Component comp) {
-      String cons = (String) constraints.get(comp);
-      return cons != null && (cons.indexOf(RiverLayout.LINE_BREAK) != -1 ||
-                              cons.indexOf(RiverLayout.PARAGRAPH_BREAK) != -1);
+      String cons = constraints.get(comp);
+      return cons != null && (cons.contains(RiverLayout.LINE_BREAK) ||
+              cons.contains(RiverLayout.PARAGRAPH_BREAK));
    }
 
    boolean hasHfill(Component comp) {
@@ -451,27 +451,27 @@ public class RiverLayout
 }
 
 class Ruler {
-   private Vector tabs = new Vector();
+   private Vector<Integer> tabs = new Vector<>();
 
    public void setTab(int num, int xpos) {
-      if (num >= tabs.size()) tabs.add(num, new Integer(xpos));
+      if (num >= tabs.size()) tabs.add(num, xpos);
       else {
          // Transpose all tabs from this tab stop and onwards
          int delta = xpos - getTab(num);
          if (delta > 0) {
             for (int i = num; i < tabs.size(); i++) {
-               tabs.set(i, new Integer(getTab(i) + delta));
+               tabs.set(i, getTab(i) + delta);
             }
          }
       }
    }
 
    public int getTab(int num) {
-      return ((Integer)tabs.get(num)).intValue();
+      return tabs.get(num);
    }
 
    public String toString() {
-      StringBuffer ret = new StringBuffer(getClass().getName() + " {");
+      StringBuilder ret = new StringBuilder(getClass().getName() + " {");
       for (int i=0; i<tabs.size(); i++) {
          ret.append(tabs.get(i));
          if (i < tabs.size()-1) ret.append(',');

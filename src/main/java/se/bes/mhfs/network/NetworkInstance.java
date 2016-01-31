@@ -41,12 +41,15 @@ import java.net.SocketException;
 import java.net.URL;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
+import java.util.HashMap;
 import java.util.Hashtable;
 
 public class NetworkInstance extends Thread implements MouseListener, ActionListener {
+
+    private static final String POST = "POST";
+
     private Socket mSocket;
-    private DataInputStream mIn;
-    //private BufferedReader in;
+    private BufferedInputStream mIn;
 
     private OutputStream mOut;
     private PrintStream mOutP;
@@ -56,7 +59,7 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
     private JPopupMenu mPopupMenu = new JPopupMenu();
     private JMenuItem mItem;
     private HFSMonitor mMonitor;
-    private Hashtable<String, String> mRequests;
+    private HashMap<String, String> mRequests;
 
     private boolean running = true;
 
@@ -64,8 +67,7 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
         this.mSocket = s;
         this.mLogArea = logArea;
         try {
-            mIn = new DataInputStream(s.getInputStream());
-            // in = new BufferedReader(new InputStreamReader(s.getInputStream()));
+            mIn = new BufferedInputStream(s.getInputStream());
             mOut = s.getOutputStream();
             mOutP = new PrintStream(s.getOutputStream());
         } catch (Exception e) {
@@ -91,19 +93,34 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
         this.mMonitor = monitor;
     }
 
+    /**
+     * Not super effective to read char-by-char, but can't be bothered to do anything better right now
+     */
     private String readLine() throws IOException {
-        return mIn.readLine();
+        int i;
+        StringBuilder sb = new StringBuilder();
+        while((i = mIn.read()) != -1) {
+            char c = (char) i;
+            if (c == '\r') {
+                continue;
+            }
+            if (c == '\n') {
+                break;
+            }
+            sb.append(c);
+        }
+        return sb.toString();
     }
 
     @Override
     public void run() {
         try {
 
-            String req = readLine();// in.readLine();
-            String line = null;
+            String req = readLine();
+            String line;
 
             // loop through and save request lines
-            mRequests = new Hashtable<String, String>();
+            mRequests = new HashMap<>();
             line = req;
             System.out.println(line);
 
@@ -121,7 +138,7 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
             }
 
             String[] strings = req.split(" ");
-            if (strings[0].toLowerCase().equals("post")) {
+            if (strings[0].equalsIgnoreCase(POST)) {
                 NetworkInstance.HTMLBegin(mOutP);
                 if (receiveFile()) {
                     mOutP.println("File upload success!<br/><a href=\"/\">Back to file listing.</a>");
@@ -309,7 +326,7 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
     }
 
     private boolean receiveFile() throws InterruptedException, IOException {
-        int buffSize = 1024;
+        int buffSize;
         try {
             buffSize = mSocket.getReceiveBufferSize();
         } catch (SocketException e) {
@@ -317,12 +334,7 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
             return false;
         }
 
-        // h�r efter �r in metodens in.
-        //DataInputStream din = new DataInputStream(s.getInputStream());
-
         SwingUtilities.invokeLater(() -> mProgress.setValue(0));
-        // HTTP POST
-        System.out.println("post!");
 
         // get the boundary
         String boundary = mRequests.get("Content-Type").split("boundary=")[1];

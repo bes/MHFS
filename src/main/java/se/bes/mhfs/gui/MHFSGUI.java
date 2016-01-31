@@ -41,13 +41,14 @@ import se.datadosen.component.RiverLayout;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.plaf.BorderUIResource;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
 import java.io.File;
 import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.*;
 
@@ -117,7 +118,7 @@ public class MHFSGUI extends JFrame implements WindowListener {
     }
 
 
-    private class SettingsPane extends Container implements Observer, UPnpServiceProxy.OnServiceChange {
+    private class SettingsPane extends Container implements Observer, UPnpServiceProxy.OnUpnpChange {
         private static final long serialVersionUID = 1L;
 
         private boolean defaultUpnpSelected = false;
@@ -390,9 +391,8 @@ public class MHFSGUI extends JFrame implements WindowListener {
         }
 
         @Override
-        public Void onChange() {
-            SwingUtilities.invokeLater(() -> updateUpnpDevices());
-
+        public Void onUpnpChange() {
+            SwingUtilities.invokeLater(this::updateUpnpDevices);
             return null;
         }
     }
@@ -440,7 +440,6 @@ public class MHFSGUI extends JFrame implements WindowListener {
                 }
             });
         }
-
     }
 
     private class NetworkProgressPane extends Container implements Observer {
@@ -479,71 +478,7 @@ public class MHFSGUI extends JFrame implements WindowListener {
         }
     }
 
-/*    public class SharedFilesPane extends Container implements Observer {
-        private static final long serialVersionUID = 1L;
-        private Container c;
-
-        public SharedFilesPane() {
-            c = this;
-
-            monitor.addObserver(this);
-            c.setLayout(new RiverLayout());
-            updateGfx();
-        }
-
-        private void updateGfx() {
-            c.removeAll();
-
-            c.add("p left", new JLabel("Shared Files:"));
-            c.add("br hfill", new JLabel(""));
-
-            if(monitor.getCustomDirList().isCustomList())
-                recurseFolder(monitor.getCustomDirList());
-            else
-                recurseFolder2(monitor.getFSList());
-
-            repaint();
-        }
-
-        private void recurseFolder(CustomDirList d){
-            String[] dirs = d.getDirDirStrings();
-            for(String s : dirs){
-                recurseFolder(d.lookupDir(s));
-            }
-
-            String[] fils = d.getDirStrings();
-            for (String s : fils) {
-                File f = d.lookup(s);
-                c.add("tab left", new JLabel(f.getAbsolutePath() + "\\"
-                        + f.getName()));
-                c.add("br hfill", new JLabel(""));
-            }
-        }
-
-        private void recurseFolder2(FSList d){
-            String[] dirs = d.getDirs(dirString)();
-            for(String s : dirs){
-                recurseFolder(d.lookupDir(s));
-            }
-
-            String[] fils = d.getDirStrings();
-            for (String s : fils) {
-                File f = d.lookup(s);
-                c.add("tab left", new JLabel(f.getAbsolutePath() + "\\"
-                        + f.getName()));
-                c.add("br hfill", new JLabel(""));
-            }
-        }
-
-        public void update(Observable arg0, Object arg1) {
-            if (((UpdateEvent) arg1).getEvent("sharedFiles"))
-                updateGfx();
-        }
-    }
-*/
-
-    private class CustomFilePane extends Container implements Observer,
-            ActionListener {
+    private class CustomFilePane extends Container implements Observer {
         private static final long serialVersionUID = 1L;
         private Container c;
         private JButton chooseFileButton = new JButton("Add file(s)");
@@ -581,19 +516,23 @@ public class MHFSGUI extends JFrame implements WindowListener {
 
             c.add("p left", chooseFileButton);
             c.add("", saveButton);
-            c.add("br hfill", new JLabel(""));
-
-            // LinkedList<FileDescriptor> lnf = monitor.getCustomFiles();
 
             if (monitor.isCustomList()) {
                 String[] dirs = monitor.getCustomDirList().getDirStrings();
-                for (String s : dirs) {
-                    JButton b = new JButton(s);
+                for (final String s : dirs) {
                     File f = monitor.getCustomDirList().lookup(s);
-                    b.addActionListener(this);
-                    c.add("tab left", b);
-                    c.add("tab left", new JLabel(f.getAbsolutePath()));
-                    c.add("br hfill", new JLabel(""));
+
+                    JButton b = new JButton("Remove");
+                    b.addActionListener(e -> monitor.removeCustomFile(s));
+                    c.add("br tab", b);
+
+                    JLabel name = new JLabel(s);
+                    name.setBorder(BorderUIResource.getLoweredBevelBorderUIResource());
+                    c.add("tab", name);
+
+                    JTextField path = new JTextField(f.getAbsolutePath());
+                    path.setEditable(false);
+                    c.add("tab hfill", path);
                 }
             }
 
@@ -601,20 +540,15 @@ public class MHFSGUI extends JFrame implements WindowListener {
         }
 
         @Override
-        public void update(Observable arg0, Object arg1) {
+        public void update(Observable o, Object arg) {
             SwingUtilities.invokeLater(() -> {
-                if (((UpdateEvent) arg1).contains(UpdateEvent.Type.CUSTOM_FILES)) {
+                if (((UpdateEvent) arg).contains(UpdateEvent.Type.CUSTOM_FILES)) {
                     updateGfx();
                 }
-                if (((UpdateEvent) arg1).contains(UpdateEvent.Type.SETTINGS)) {
+                if (((UpdateEvent) arg).contains(UpdateEvent.Type.SETTINGS)) {
                     saveButton.setEnabled(monitor.needsSave());
                 }
             });
-        }
-
-        @Override
-        public void actionPerformed(ActionEvent e) {
-            monitor.removeCustomFile(((JButton) e.getSource()).getText());
         }
     }
 
@@ -649,14 +583,18 @@ public class MHFSGUI extends JFrame implements WindowListener {
             try {
                 InetAddress[] all = InetAddress.getAllByName(InetAddress
                         .getLocalHost().getHostName());
-                for (int i = 0; i < all.length; i++) {
-                    final String hostAddress = all[i].getHostAddress();
+                for (InetAddress anAll : all) {
+                    final String hostAddress = anAll.getHostAddress();
                     final int port = monitor.getInMemory().port;
 
-                    ipAddressContainer.add("p", new JLabel("Address " + (i + 1) + ": http://"
-                            + hostAddress + ":" + monitor.getInMemory().port));
+                    NetworkInterface nif = NetworkInterface.getByInetAddress(anAll);
+
+                    JTextField ipField = new JTextField(String.format("http://%s:%d", hostAddress, port));
+                    ipField.setEditable(false);
+                    ipAddressContainer.add("br", new JLabel(nif.getDisplayName()));
+                    ipAddressContainer.add("tab hfill", ipField);
                 }
-            } catch (UnknownHostException e) {
+            } catch (UnknownHostException | SocketException e) {
                 e.printStackTrace();
             }
             repaint();
@@ -674,7 +612,7 @@ public class MHFSGUI extends JFrame implements WindowListener {
 
     }
 
-    private class UPnPPane extends Container implements Observer, UPnpServiceProxy.OnServiceChange {
+    private class UPnPPane extends Container implements Observer, UPnpServiceProxy.OnUpnpChange {
         private Container upnpDeviceContainer;
         private static final long serialVersionUID = 1L;
 
@@ -717,7 +655,7 @@ public class MHFSGUI extends JFrame implements WindowListener {
         }
 
         @Override
-        public Void onChange() {
+        public Void onUpnpChange() {
             SwingUtilities.invokeLater(() -> {
                 updateGfx();
             });
@@ -740,12 +678,13 @@ public class MHFSGUI extends JFrame implements WindowListener {
             jtext.setWrapStyleWord(true);
             // jtext.setMaximumSize(new Dimension(20,30));
 
-            jtext.setText("Minimal HTTP File Server (MHFS) for file uploads/downloads.\n"
-                            + "\n"
-                            + "FAQ:\n"
-                            + "Q: Why is my status Offline (Red ball)\n"
-                            + "A: The port you want to use is probably not available on your computer, choose another port and click \"Save\" then \"STOP\" and then \"START\". You can also check the log for error messages.\n"
-                            );
+            jtext.append("Minimal HTTP File Server (MHFS) for file uploads/downloads.\n");
+            jtext.append("\n");
+            jtext.append("FAQ:\n");
+            jtext.append("Q: Why is my status Offline (Red ball)\n");
+            jtext.append("A: The port you want to use is probably not available on your computer, choose another port and click \"Save\" then \"STOP\" and then \"START\". You can also check the log for error messages.\n");
+            jtext.append("\n");
+            jtext.append("https://github.com/bes/MHFS");
 
             content.add("p hfill", new JLabel("About"));
             content.add("p vfill hfill", new JScrollPane(jtext));

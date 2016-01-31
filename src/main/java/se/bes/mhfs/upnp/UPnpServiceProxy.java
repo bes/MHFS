@@ -55,7 +55,7 @@ public class UPnpServiceProxy {
 
     private final UpnpService service;
 
-    private final ArrayList<OnServiceChange> listeners = new ArrayList<>();
+    private final ArrayList<OnUpnpChange> listeners = new ArrayList<>();
 
     private final HashMap<String, UpnpMapping> upnpMappings = new HashMap<>();
 
@@ -63,8 +63,8 @@ public class UPnpServiceProxy {
 
     private final MHFSLogger logger;
 
-    public interface OnServiceChange {
-        Void onChange();
+    public interface OnUpnpChange {
+        Void onUpnpChange();
     }
 
     private static class UpnpMapping {
@@ -126,23 +126,21 @@ public class UPnpServiceProxy {
         });
     }
 
-    public void addListener(OnServiceChange onServiceChange) {
+    public void addListener(OnUpnpChange onUpnpChange) {
         synchronized (listeners) {
-            listeners.add(onServiceChange);
+            listeners.add(onUpnpChange);
         }
     }
 
-    public void removeListener(OnServiceChange onServiceChange) {
+    public void removeListener(OnUpnpChange onUpnpChange) {
         synchronized (listeners) {
-            listeners.remove(onServiceChange);
+            listeners.remove(onUpnpChange);
         }
     }
 
     private void notifyOnServiceChangeListeners() {
         synchronized (listeners) {
-            for (OnServiceChange listener : listeners) {
-                listener.onChange();
-            }
+            listeners.forEach(OnUpnpChange::onUpnpChange);
         }
     }
 
