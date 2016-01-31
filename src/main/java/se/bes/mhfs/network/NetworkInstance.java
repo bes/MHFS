@@ -373,10 +373,18 @@ public class NetworkInstance extends Thread implements MouseListener, ActionList
                 String[] split = contentDisposition.split("filename=");
                 String filename = "";
                 if (split.length == 2) {
-                    String[] split2 = split[1].replaceAll("\"", "").split(
-                            "\\\\");
-                    filename = split2[split2.length - 1];
-                    File outF = new File(mMonitor.getInMemory().uploadDir + "\\"
+                    final File fakeFile = new File(split[1].replaceAll("\"", ""));
+                    filename = fakeFile.getName();
+
+                    if (filename.contains(File.separator)) {
+                        mLogArea.append("File receiving aborted: " + filename
+                                + " is not allowed, it contains file system separator characters ( "
+                                + mSocket.getInetAddress().getHostAddress() + " )\n");
+                        updateLabel(String.format("[R] File not allowed, %s / %.2f kB", filename, contentLength / 1024d));
+                        return false;
+                    }
+
+                    File outF = new File(mMonitor.getInMemory().uploadDir + File.separator
                             + filename);
                     if (outF.exists()) {
                         mLogArea.append("File receiving aborted: " + filename

@@ -115,7 +115,7 @@ public class HFSMonitor extends Observable implements Observer {
     }
 
     public void setBaseDir(String baseDir) {
-        inMemory.buildUpon().setBaseDir(baseDir).build();
+        inMemory = inMemory.buildUpon().setBaseDir(baseDir).build();
         sendNotification(UpdateEvent.Type.SETTINGS, UpdateEvent.Type.SHARED_FILES);
     }
 
