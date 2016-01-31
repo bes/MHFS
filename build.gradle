@@ -11,7 +11,16 @@ repositories {
 
 apply plugin: 'java'
 
-version = '0.3'
+def getVersionName = { ->
+    def stdout = new ByteArrayOutputStream()
+    exec {
+        commandLine 'git', 'describe', '--tags'
+        standardOutput = stdout
+    }
+    return stdout.toString().trim()
+}
+
+version = getVersionName()
 
 // Dependencies common to all projects
 dependencies {
