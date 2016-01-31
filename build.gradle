@@ -11,7 +11,7 @@ repositories {
 
 apply plugin: 'java'
 
-version = '0.2'
+version = '0.3'
 
 // Dependencies common to all projects
 dependencies {
